@@ -8,7 +8,7 @@ from sklearn.externals import joblib
 import seaborn as sns
 sns.set(color_codes=True)
 import matplotlib.pyplot as plt
-%matplotlib inline
+#%matplotlib inline
 import h5py as h5
 from gwpy.timeseries import TimeSeries
 
@@ -20,11 +20,14 @@ tf.logging.set_verbosity(tf.logging.ERROR)
 from keras.layers import Input, Dropout, Dense, LSTM, TimeDistributed, RepeatVector
 from keras.models import Model
 from keras import regularizers
+from keras.models import load_model
 import argparse
+
+from model import autoencoder_model
 
 def main(args):
     outdir = args.outdir
-    detector = arg.detector
+    detector = args.detector
     os.system('mkdir -p %s'%outdir)
 
     train_start = 1185939456
@@ -58,10 +61,12 @@ def main(args):
 
     # load the autoencoder network model
     model = autoencoder_model(X_train)
-    model.load('%s/best_model.hdf5'%(outdir))
+    model = load_model('%s/best_model.hdf5'%(outdir))
+    #model.load('%s/best_model.hdf5'%(outdir))
+
     
     ### Evaluating on training data to find threshold ### 
-    print('Evaluating Model on Train data. This make take a while...')
+    print('Evaluating Model on train data. This make take a while...')
     X_pred = model.predict(X_train)
     X_pred = X_pred.reshape(X_pred.shape[0], X_pred.shape[2])
     X_pred = pd.DataFrame(X_pred)
@@ -75,21 +80,22 @@ def main(args):
     plt.savefig('%s/loss_train_spread.jpg'%(outdir))
     
     threshold = scored.max()[0]
+    
     print('The threshold is: %s'%(str(threshold)))
     
-
+    print('Evaluating Model on test data. This make take a while...')
     ### Evaluating on test data to find threshold ### 
     X_pred_test = model.predict(X_test)
     X_pred_test = X_pred_test.reshape(X_pred_test.shape[0], X_pred_test.shape[2])
     X_pred_test = pd.DataFrame(X_pred_test)
     #X_pred_train.index = train.index
     Xtest = X_test.reshape(X_test.shape[0], X_test.shape[2])
-
+    
     scored_test = pd.DataFrame()
     scored_test['Loss_mae'] = np.mean(np.abs(X_pred_test-Xtest), axis = 1)
     scored_test['Threshold'] = threshold
     scored_test['Anomaly'] = scored_test['Loss_mae'] > scored_test['Threshold']
-    scored_train.plot(logy=True,  figsize=(16,9), ylim=[threshold/(1e2),threshold*(1e2)], color=['blue','red'])
+    scored_test.plot(logy=True,  figsize=(16,9), ylim=[threshold/(1e2),threshold*(1e2)], color=['blue','red'])
     plt.savefig('%s/test_threshold.jpg'%(outdir))
     
 if __name__ == "__main__":
