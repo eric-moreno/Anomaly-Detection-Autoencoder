@@ -24,7 +24,7 @@ from keras import regularizers
 from keras.models import load_model
 import argparse
 
-from model import autoencoder_model
+from model import autoencoder_LSTM, autoencoder_DNN, autoencoder_Conv, autoencoder_DeepConv
 
 def filters(array, sample_frequency):
     strain = TimeSeries(array, sample_rate=int(sample_frequency))
@@ -115,8 +115,10 @@ def main(args):
     
     for t0 in GW_GPS_confirmed: 
         from gwosc.locate import get_urls
-        url = get_urls(detector, t0, t0)[-1]
-
+        try:
+            url = get_urls(detector, t0, t0)[-1]
+        except: 
+            continue 
         print('Downloading: ' , url)
         fn = os.path.basename(url)
         with open(fn,'wb') as strainfile:                 
@@ -145,7 +147,8 @@ def main(args):
         scored_test['Loss_mae'] = np.mean(np.abs(X_pred_test-Xtest), axis = 1)
         scored_test['Threshold'] = threshold
         scored_test['Anomaly'] = scored_test['Loss_mae'] > scored_test['Threshold']
-        scored_test.plot(logy=True,  figsize=(16,9), ylim=[threshold/(1e2),threshold*(1e2)], color=['blue','red'])
+        #scored_test.plot(logy=True,  figsize=(16,9), ylim=[t/(1e2),threshold*(1e2)], color=['blue','red'])
+        scored_test.plot(logy=False,  figsize=(16,9), color=['blue','red'])
         plt.savefig('%s/test_threshold_%s_pm30sec.jpg'%(outdir, t0))
     
     '''

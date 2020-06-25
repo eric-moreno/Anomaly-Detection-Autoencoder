@@ -24,7 +24,8 @@ from keras import regularizers
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 import argparse
 
-from model import autoencoder_model
+from model import autoencoder_LSTM, autoencoder_DNN, autoencoder_Conv, autoencoder_DeepConv
+
 
 def filters(array, sample_frequency):
     strain = TimeSeries(array, sample_rate=int(sample_frequency))
@@ -45,6 +46,7 @@ def main(args):
     train_start = 1185939456
     num_train = 5
     range_train = [0, 1, 2, 3, 4, 7, 8, 9, 10]
+    #range_train = [0]
     train_files = [train_start + i*4096 for i in range_train]
     x = np.array([])
 
@@ -90,13 +92,14 @@ def main(args):
     #X_test = X_test.reshape(X_test.shape[0], 1, X_test.shape[1])
     print("Test data shape:", X_test.shape)
 
-    model = autoencoder_model(X_train)
+    #model = autoencoder_LSTM(X_train)
+    model = autoencoder_DeepConv(X_train)
     model.compile(optimizer='adam', loss='mae')
     model.summary()
 
     # fit the model to the data
-    nb_epochs = 100
-    batch_size = 128
+    nb_epochs = 200
+    batch_size = 16
     earlyStopping = EarlyStopping(monitor='val_loss', patience=10, verbose=0, mode='min')
     mcp_save = ModelCheckpoint('%s/best_model.hdf5'%(outdir), save_best_only=True, monitor='val_loss', mode='min')
     history = model.fit(X_train, X_train, epochs=nb_epochs, batch_size=batch_size,
