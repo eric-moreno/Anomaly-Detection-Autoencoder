@@ -138,6 +138,9 @@ def main(args):
             
         X_test = X_test.reshape(int(X_test.shape[0]/timesteps), timesteps, X_test.shape[1])
         X_pred_test = np.array(model.predict(X_test))
+        print(X_pred_test.shape)
+        print(X_pred_test)
+        sys.exit()
         X_pred_test = X_pred_test.reshape(X_pred_test.shape[0]*timesteps, X_pred_test.shape[2])
         X_pred_test = pd.DataFrame(X_pred_test)
         #X_pred_train.index = train.index
