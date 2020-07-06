@@ -21,15 +21,6 @@ def autoencoder_LSTM(X):
     model = Model(inputs=inputs, outputs=output)
     return model
     
-def autoencoder_DNN(X): 
-    lstm_model = Sequential()
-    lstm_model.add(LSTM(10, input_shape=(X.shape[1], X.shape[2]), return_sequences=True))
-    lstm_model.add(LSTM(5, activation='relu', return_sequences=True))
-    lstm_model.add(LSTM(1, activation='relu'))
-    lstm_model.add(Dense(5, kernel_initializer='glorot_normal', activation='relu'))
-    lstm_model.add(Dense(10, kernel_initializer='glorot_normal', activation='relu'))
-    return lstm_model
-
 def autoencoder_Conv(X):
     inputs = Input(shape=(X.shape[1], X.shape[2]))
     L1 = Conv1D(160, 3, activation="relu", padding="same")(inputs) # 10 dims
