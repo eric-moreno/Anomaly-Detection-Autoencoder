@@ -11,7 +11,7 @@ sns.set(color_codes=True)
 import matplotlib.pyplot as plt
 #%matplotlib inline
 import h5py as h5
-from gwpy.timeseries import TimeSeries
+#from gwpy.timeseries import TimeSeries
 
 from numpy.random import seed
 from tensorflow import set_random_seed
@@ -24,7 +24,7 @@ from keras import regularizers
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 import argparse
 
-from model import autoencoder_LSTM, autoencoder_DNN, autoencoder_Conv, autoencoder_DeepConv
+from model import autoencoder_LSTM, autoencoder_Conv, autoencoder_DeepConv
 
 
 def filters(array, sample_frequency):
@@ -42,32 +42,19 @@ def main(args):
     os.system('mkdir -p %s'%outdir)
 
     # Load train and test data
-
-    train_start = 1185939456
-    num_train = 5
-    range_train = [0, 1, 2, 3, 4, 7, 8, 9, 10]
-    #range_train = [0]
-    train_files = [train_start + i*4096 for i in range_train]
-    x = np.array([])
-
-    for file in train_files: 
-        load = h5.File('/cvmfs/gwosc.osgstorage.org/gwdata/O2/strain.%sk/hdf.v1/%s/%s/%s-%s_GWOSC_O2_%sKHZ_R1-%s-4096.hdf5'%(str(freq),detector, str(train_start), detector[0], detector, str(freq), str(file)))
-        x = np.concatenate((x, load['strain']['Strain'][()]), axis=0)
-
+    load = h5.File('data/default.hdf','r')
+    noise_samples = load['noise_samples']['%s_strain'%(str(detector).lower())][:]
+    x = noise_samples.reshape(-1, 1)
     
-    test_start = 1186988032
-    num_test = 1
-    test_files = [test_start + (num_train)*4096 + i*4096 for i in range(num_test)]
-    y = np.array([])
-
-    for file in test_files: 
-        load = h5.File('/cvmfs/gwosc.osgstorage.org/gwdata/O2/strain.%sk/hdf.v1/%s/%s/%s-%s_GWOSC_O2_%sKHZ_R1-%s-4096.hdf5'%(str(freq),detector, str(test_start), detector[0], detector, str(freq), str(file)))
-        y = np.concatenate((y, load['strain']['Strain'][()]), axis=0)
+    injection_samples = load['injection_samples']['%s_strain'%(str(detector).lower())][:]
+    y = injection_samples.reshape(-1, 1)
     
      # Definining frequency in Hz instead of KHz
     freq = 1000*int(freq)
-    
-    if filtered:
+
+    # With LIGO simulated data, the sample is pre-filtered so no need to filter again. Real data
+    # is not filtered yet. 
+    if bool(int(filtered)):
         x = filters(x, freq)
         y = filters(y, freq)
         
@@ -79,6 +66,7 @@ def main(args):
     joblib.dump(scaler, scaler_filename)
 
     
+    #Trim dataset to be batch-friendly and reshape into timestep format
     if X_train.shape[0]%timesteps != 0: 
         X_train = X_train[:-1*int(X_train.shape[0]%timesteps)]
     
@@ -91,15 +79,15 @@ def main(args):
     X_test = X_test.reshape(int(X_test.shape[0]/timesteps), timesteps, X_test.shape[1])
     #X_test = X_test.reshape(X_test.shape[0], 1, X_test.shape[1])
     print("Test data shape:", X_test.shape)
-
-    #model = autoencoder_LSTM(X_train)
-    model = autoencoder_DeepConv(X_train)
+ 
+    #Define model 
+    model = autoencoder_Conv(X_train)
     model.compile(optimizer='adam', loss='mae')
     model.summary()
 
     # fit the model to the data
     nb_epochs = 200
-    batch_size = 16
+    batch_size = 1024
     earlyStopping = EarlyStopping(monitor='val_loss', patience=10, verbose=0, mode='min')
     mcp_save = ModelCheckpoint('%s/best_model.hdf5'%(outdir), save_best_only=True, monitor='val_loss', mode='min')
     history = model.fit(X_train, X_train, epochs=nb_epochs, batch_size=batch_size,

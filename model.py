@@ -11,12 +11,12 @@ import argparse
 
 def autoencoder_LSTM(X):
     inputs = Input(shape=(X.shape[1], X.shape[2]))
-    L1 = LSTM(16, activation='relu', return_sequences=True, 
+    L1 = LSTM(32, activation='relu', return_sequences=True, 
               kernel_regularizer=regularizers.l2(0.00))(inputs)
-    L2 = LSTM(4, activation='relu', return_sequences=False)(L1)
+    L2 = LSTM(8, activation='relu', return_sequences=False)(L1)
     L3 = RepeatVector(X.shape[1])(L2)
-    L4 = LSTM(4, activation='relu', return_sequences=True)(L3)
-    L5 = LSTM(16, activation='relu', return_sequences=True)(L4)
+    L4 = LSTM(8, activation='relu', return_sequences=True)(L3)
+    L5 = LSTM(32, activation='relu', return_sequences=True)(L4)
     output = TimeDistributed(Dense(X.shape[2]))(L5)    
     model = Model(inputs=inputs, outputs=output)
     return model
