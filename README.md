@@ -1,13 +1,15 @@
 LIGO-Autoencoder: An anomaly detection algorithm for gravitational waves
 ======================================================================================
 
-The data used in this package was produced from https://github.com/timothygebhard/ggwd 
-
 Setup
 ======================================================================================
 Download dataset containing 5,000 injection events and 20,000 noise events. Place in directory labeled 'data'. Must have GWpy package. 
 
+The data used in this package was produced from https://github.com/timothygebhard/ggwd 
 Simulated data: https://cernbox.cern.ch/index.php/s/QMViw5nZZfbrsf9
+  - Unfiltered 
+  - Sample Rate: 2048 (put 2 KHz as sampling frequency)
+  - Generates simulated noise and simulated waveforms 
 
 Training
 ======================================================================================
