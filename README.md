@@ -7,6 +7,8 @@ Setup
 ======================================================================================
 Download dataset containing 5,000 injection events and 20,000 noise events. Place in directory labeled 'data'. Must have GWpy package. 
 
+Simulated data: https://cernbox.cern.ch/index.php/s/QMViw5nZZfbrsf9
+
 Training
 ======================================================================================
 
@@ -14,14 +16,14 @@ Determine the parameters needed for the autoencoder training. For example:
 
   - Output directory = training_LSTM_100steps
   - Detector = L1 (L1 and H1 are available)
-  - Sampling Frequency = 4 KHz (used for filters, input in KHz)
-  - Filters = 0 (turned off for simulated data)
+  - Sampling Frequency = 2 KHz (used for filters, input in KHz)
+  - Filters = 1 (turn on for simulated data)
   - Timesteps = 100 
 
 Would be executed by running: 
 
 ```bash
-python3 train.py training_LSTM_100steps L1 --freq 4 --filtered 0 --timesteps 100
+python3 train.py training_LSTM_100steps L1 --freq 2 --filtered 1 --timesteps 100
 ```
 Batch size and model achitecture need to be changed manually inside the train.py script. Training only occurs with noise events.
 
@@ -32,7 +34,7 @@ The testing procedure involves determining a upper-threshold for the loss from t
 Run the evaluation script using the same parameters used in training: 
 
 ```bash
-python3 eval.py training_LSTM_100steps L1 --freq 4 --filtered 0 --timesteps 100
+python3 eval.py training_LSTM_100steps L1 --freq 2 --filtered 1 --timesteps 100
 ```
 
 Additional Models
