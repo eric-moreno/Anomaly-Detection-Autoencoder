@@ -42,7 +42,7 @@ def main(args):
     os.system('mkdir -p %s'%outdir)
 
     # Load train and test data
-    load = h5.File('data/default.hdf','r')
+    load = h5.File('data/default_simulated.hdf','r')
     noise_samples = load['noise_samples']['%s_strain'%(str(detector).lower())][:][:]
 
     #injection_samples = load['injection_samples']['%s_strain'%(str(detector).lower())][:]
@@ -95,8 +95,8 @@ def main(args):
     #print("Test data shape:", X_test.shape)
  
     #Define model 
-    model = autoencoder_LSTM(X_train)
-    model.compile(optimizer='adam', loss='mae')
+    model = autoencoder_DNN(X_train) 
+    model.compile(optimizer='adam', loss='mse')
     model.summary()
 
     # fit the model to the data

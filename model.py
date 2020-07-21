@@ -1,7 +1,7 @@
 from numpy.random import seed
 from tensorflow import set_random_seed
 import tensorflow as tf
-tf.logging.set_verbosity(tf.logging.ERROR)
+#tf.logging.set_verbosity(tf.logging.ERROR) 
 
 from keras.layers import Input, Dropout, Dense, LSTM, TimeDistributed, RepeatVector, Conv1D, MaxPooling1D, UpSampling1D, BatchNormalization, Flatten, Reshape
 from keras.models import Model
@@ -75,15 +75,15 @@ def autoencoder_ConvLSTM(X):
     L3 = Conv1D(10, 3, activation="relu", padding="same")(L2) # 5 dims
     #x = BatchNormalization()(x)
     encoded = MaxPooling1D(4, padding="same")(L3) # 3 dims
-    x = Reshape((130, 1))(encoded)
+    x = Reshape((70, 1))(encoded)
     
     x = LSTM(32, activation='relu', return_sequences=False, 
               kernel_regularizer=regularizers.l2(0.00))(x)
-    x = RepeatVector(130)(x)
+    x = RepeatVector(70)(x)
     x = LSTM(32, activation='relu', return_sequences=True)(x)
     out = TimeDistributed(Dense(1))(x)  
     
-    x = Reshape((13, 10))(out)
+    x = Reshape((7, 10))(out)
     # 3 dimensions in the encoded layer
     L4 = Conv1D(10, 3, activation="relu", padding="same")(x) # 3 dims
     #x = BatchNormalization()(x)
