@@ -45,7 +45,7 @@ def main(args):
     timesteps = int(args.timesteps)
     os.system('mkdir -p %s'%outdir)
     
-    load = h5.File('data/default_simulated.hdf','r')
+    load = h5.File('data/default_simulated.hdf','r') 
     
     if int(freq) == 2: 
         freq = 2048

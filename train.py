@@ -95,7 +95,7 @@ def main(args):
     #print("Test data shape:", X_test.shape)
  
     #Define model 
-    model = autoencoder_DNN(X_train)
+    model = autoencoder_DNN(X_train) 
     model.compile(optimizer='adam', loss='mse')
     model.summary()
 

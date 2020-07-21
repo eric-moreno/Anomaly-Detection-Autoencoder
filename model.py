@@ -1,7 +1,7 @@
 from numpy.random import seed
 from tensorflow import set_random_seed
 import tensorflow as tf
-#tf.logging.set_verbosity(tf.logging.ERROR)
+#tf.logging.set_verbosity(tf.logging.ERROR) 
 
 from keras.layers import Input, Dropout, Dense, LSTM, TimeDistributed, RepeatVector, Conv1D, MaxPooling1D, UpSampling1D, BatchNormalization, Flatten, Reshape
 from keras.models import Model
