@@ -46,7 +46,7 @@ def main(args):
     os.system('mkdir -p %s' % outdir)
 
     # Load train and test data
-    load = h5.File('../../dataset/default.hdf', 'r')
+    load = h5.File('../../dataset/default_simulated.hdf', 'r')
 
     noise_samples = load['noise_samples']['%s_strain' % (str(detector).lower())][:][:]
     # injection_samples = load['injection_samples']['%s_strain'%(str(detector).lower())][:]
@@ -93,7 +93,7 @@ def main(args):
 
     # Define the model
     model = autoencoder_LSTM(X_train)
-    model.compile(optimizer='adam', loss='mae')
+    model.compile(optimizer='adam', loss='mse')
     model.summary()
 
     # Fit the model to the data
@@ -109,7 +109,7 @@ def main(args):
     ax.plot(history['loss'], 'b', label='Train', linewidth=2)
     ax.plot(history['val_loss'], 'r', label='Validation', linewidth=2)
     ax.set_title('Model loss', fontsize=16)
-    ax.set_ylabel('Loss (mae)')
+    ax.set_ylabel('Loss (mse)')
     ax.set_xlabel('Epoch')
     ax.legend(loc='upper right')
     plt.savefig(f'{outdir}/loss.jpg')

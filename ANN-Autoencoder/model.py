@@ -75,15 +75,15 @@ def autoencoder_ConvLSTM(X):
     L3 = Conv1D(10, 3, activation="relu", padding="same")(L2)  # 5 dims
     # x = BatchNormalization()(x)
     encoded = MaxPooling1D(4, padding="same")(L3)  # 3 dims
-    x = Reshape((130, 1))(encoded)
+    x = Reshape((70, 1))(encoded)
 
     x = LSTM(32, activation='relu', return_sequences=False,
              kernel_regularizer=regularizers.l2(0.00))(x)
-    x = RepeatVector(130)(x)
+    x = RepeatVector(70)(x)
     x = LSTM(32, activation='relu', return_sequences=True)(x)
     out = TimeDistributed(Dense(1))(x)
 
-    x = Reshape((13, 10))(out)
+    x = Reshape((7, 10))(out)
     # 3 dimensions in the encoded layer
     L4 = Conv1D(10, 3, activation="relu", padding="same")(x)  # 3 dims
     # x = BatchNormalization()(x)
@@ -97,7 +97,6 @@ def autoencoder_ConvLSTM(X):
 
 
 def autoencoder_DeepConv(X):
-    ### Use autoencoder_ConvDNN instead ###
     inputs = Input(shape=(X.shape[1], X.shape[2]))
     x = Conv1D(16, 16, activation="relu", padding="same")(inputs)
     x = MaxPooling1D(4, padding="same")(x)
@@ -114,7 +113,7 @@ def autoencoder_DeepConv(X):
     x = UpSampling1D(4)(x)
     x = Conv1D(32, 8, activation="relu", padding="same", dilation_rate=4)(x)
     x = UpSampling1D(4)(x)
-    x = Conv1D(16, 16, activation="relu", padding="same")(inputs)
+    x = Conv1D(16, 16, activation="relu", padding="same")(x)
     x = Dense(X.shape[1], activation='relu')(x)
     output = Reshape((X.shape[1], 1))(x)
     model = Model(inputs=inputs, outputs=output)
