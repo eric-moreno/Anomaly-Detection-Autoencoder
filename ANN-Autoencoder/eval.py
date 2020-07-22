@@ -1,48 +1,33 @@
 """ Evaluation of model trained for anomaly detection. """
 
-import os
-import requests
+import os, sys
+import argparse
 import pandas as pd
 import numpy as np
-import setGPU
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.externals import joblib
+import joblib
 import seaborn as sns
-
-sns.set(color_codes=True)
 import matplotlib.pyplot as plt
-# %matplotlib inline
 import h5py as h5
-from gwpy.timeseries import TimeSeries
-
-from numpy.random import seed
-from tensorflow import set_random_seed
 import tensorflow as tf
-
-# tf.logging.set_verbosity(tf.logging.INFO)
-tf.get_logger().setLevel('INFO')
-tf.autograph.set_verbosity(3)
-
-from keras.layers import Input, Dropout, Dense, LSTM, TimeDistributed, RepeatVector
-from keras.models import Model
-from keras import regularizers
+from gwpy.timeseries import TimeSeries
 from keras.models import load_model
 from tensorflow.keras.losses import mean_absolute_error, MeanAbsoluteError, mean_squared_error, MeanSquaredError
 from random import sample as RandSample
-import argparse
-from sklearn.metrics import roc_curve, auc, accuracy_score
+from sklearn.metrics import auc
 
-from model import autoencoder_LSTM, autoencoder_Conv, autoencoder_DeepConv
+sns.set(color_codes=True)
 
 
 def filters(array, sample_frequency):
+    """ Apply preprocessing such as whitening and bandpass """
     strain = TimeSeries(array, sample_rate=int(sample_frequency))
     white_data = strain.whiten(fftlength=4, fduration=4)
     bp_data = white_data.bandpass(50, 250)
-    return (bp_data.value)
+    return bp_data.value
 
 
 def main(args):
+    """ Main function to evaluate the model """
     outdir = args.outdir
     detector = args.detector
     freq = args.freq
@@ -50,27 +35,27 @@ def main(args):
     timesteps = int(args.timesteps)
     os.system('mkdir -p %s' % outdir)
 
-    load = h5.File('data/default_simulated.hdf', 'r')
+    load = h5.File('../../dataset/default_simulated.hdf', 'r')
 
+    # Define frequency in Hz instead of KHz
     if int(freq) == 2:
         freq = 2048
     elif int(freq) == 4:
         freq = 4096
-
-    if freq % 2048 != 0:
-        print('WARNING: not a supported sampling frequency for simulated data')
-        print('Sampling Frequency: %s' % (freq))
+    else:
+        return print(f'Given frequency {freq}kHz is not supported. Correct values are 2 or 4kHz.')
 
     n_noise_events = 1000
     noise_samples = load['noise_samples']['%s_strain' % (str(detector).lower())][:][:n_noise_events]
 
     if bool(int(filtered)):
-        print('filtering data with whitening and bandpass')
+        print('Filtering data with whitening and bandpass')
+        print(f'Sample Frequency: {freq} Hz')
         x_noise = [filters(sample, freq) for sample in noise_samples]
-        print('Done!')
+        print('Filtering completed')
 
     # Load previous scaler and transform
-    scaler_filename = "%s/scaler_data_%s" % (outdir, detector)
+    scaler_filename = f"{outdir}/scaler_data_{detector}"
     scaler = joblib.load(scaler_filename)
     X_train = scaler.transform(x_noise)
 
@@ -78,14 +63,14 @@ def main(args):
     # if X_train.shape[0]%timesteps != 0:
     #    X_train = X_train[:-1*int(X_train.shape[0]%timesteps)]
 
-    # reshape inputs for LSTM [samples, timesteps, features]
+    # Reshape inputs for LSTM [samples, timesteps, features]
     X_train = X_train.reshape(-1, timesteps, 1)
     print("Training data shape:", X_train.shape)
 
-    # load the autoencoder network model
-    model = load_model('%s/best_model.hdf5' % (outdir))
+    # Load the autoencoder network model
+    model = load_model(f'{outdir}/best_model.hdf5')
 
-    ### Evaluating on training data to find threshold ###
+    # Evaluating on training data to find threshold
     print('Evaluating Model on train data. This make take a while...')
     X_pred = model.predict(X_train)
     print('Finished evaluating model on train data')
@@ -107,7 +92,7 @@ def main(args):
     '''
 
     threshold = np.max(averaged_losses)
-    print('The threshold is: %s' % (str(threshold)))
+    print(f'The threshold is: {threshold}')
 
     roc_steps = 20
     FPRs = np.logspace(-2, 1.9999999, roc_steps)
@@ -122,12 +107,12 @@ def main(args):
     random_samples = RandSample(range(0, len(injection_samples)), 10)
 
     if bool(int(filtered)):
-        print('filtering data with whitening and bandpass')
+        print('Filtering data with whitening and bandpass')
         x_injection = [filters(sample, freq) for sample in injection_samples]
-        print('Done!')
+        print('Filtering completed')
 
     # Normalize the data
-    scaler_filename = "%s/scaler_data_%s" % (outdir, detector)
+    scaler_filename = f"{outdir}/scaler_data_{detector}"
     scaler = joblib.load(scaler_filename)
     X_test = scaler.transform(x_injection)
     # X_test = scaler.transform(y.reshape(-1, 1))
@@ -173,7 +158,7 @@ def main(args):
     plt.xscale('log')
     plt.title('LIGO anomaly detection algorithm LSTM')
     plt.legend(loc="lower right")
-    plt.savefig('%s/ROC_curve.jpg' % (outdir))
+    plt.savefig(f'{outdir}/ROC_curve.jpg')
     sys.exit()
 
     for random_sample in random_samples:
@@ -195,7 +180,7 @@ def main(args):
         plt.axvline(len(batch_loss) * 5.5 / 8, label='actual GW event', color='green')
         plt.axhline(threshold, label='GW event threshold', color='red')
         plt.legend(loc='upper left')
-        plt.savefig('%s/batchloss_%s.jpg' % (outdir, time))
+        plt.savefig(f'{outdir}/batchloss_{time}.jpg')
 
         X_pred_test = np.array(model.predict(event))
 
@@ -204,7 +189,7 @@ def main(args):
         ax.plot(X_pred_test.reshape(-1)[int(2048 * 5.5) - 300:int(2048 * 5.5) + 300], label='predict')
         plt.legend(loc='upper left')
         plt.title('LSTM Autoencoder')
-        plt.savefig('%s/middle30ms_%s.jpg' % (outdir, time))
+        plt.savefig(f'{outdir}/middle30ms_{time}.jpg')
 
         print(X_pred_test.shape)
         X_pred_test = X_pred_test.reshape(X_pred_test.shape[0] * timesteps, X_pred_test.shape[2])
@@ -219,8 +204,8 @@ def main(args):
         # scored_test['Anomaly'] = scored_test['Loss_mae'] > scored_test['Threshold']
         # scored_test.plot(logy=True,  figsize=(16,9), ylim=[t/(1e2),threshold*(1e2)], color=['blue','red'])
         scored_test.plot(logy=False, figsize=(16, 9), color=['blue', 'red'])
-        plt.axvline(5.5 * 2048, label='actual GW event',
-                    color='green')  # Sampling rate of 2048 Hz with the event occuring 5.5 seconds into sample
+        # Sampling rate of 2048 Hz with the event occuring 5.5 seconds into sample
+        plt.axvline(5.5 * 2048, label='actual GW event', color='green')
         plt.legend(loc='upper left')
         plt.savefig('%s/test_threshold_%s_8sec.jpg' % (outdir, time))
 

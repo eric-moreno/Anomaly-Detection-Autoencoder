@@ -48,10 +48,6 @@ def main(args):
     # Load train and test data
     load = h5.File('../../dataset/default_simulated.hdf', 'r')
 
-    noise_samples = load['noise_samples']['%s_strain' % (str(detector).lower())][:][:]
-    # injection_samples = load['injection_samples']['%s_strain'%(str(detector).lower())][:]
-    # y = injection_samples.reshape(-1)
-
     # Define frequency in Hz instead of KHz
     if int(freq) == 2:
         freq = 2048
@@ -59,6 +55,10 @@ def main(args):
         freq = 4096
     else:
         return print(f'Given frequency {freq}kHz is not supported. Correct values are 2 or 4kHz.')
+
+    noise_samples = load['noise_samples']['%s_strain' % (str(detector).lower())][:][:]
+    # injection_samples = load['injection_samples']['%s_strain'%(str(detector).lower())][:]
+    # y = injection_samples.reshape(-1)
 
     # With LIGO simulated data, the sample isn't pre-filtered so need to filter again.
     # Real data is not filtered yet.
