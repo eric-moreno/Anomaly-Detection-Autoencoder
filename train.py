@@ -82,20 +82,18 @@ def main(args):
     '''
     
     #Trim dataset to be batch-friendly and reshape into timestep format
-    if X_train.shape[0]%timesteps != 0: 
-        X_train = X_train[:-1*int(X_train.shape[0]%timesteps)]
-    #if X_test.shape[0]%timesteps != 0: 
-    #    X_test = X_test[:-1*int(X_test.shape[0]%timesteps)]
+    x = []
+    for event in range(len(X_train)): 
+        if X_train[event].shape[0]%timesteps != 0: 
+            x.append(X_train[event][:-1*int(X_train[event].shape[0]%timesteps)])
+    
     
     # reshape inputs for LSTM [samples, timesteps, features]
-    X_train = X_train.reshape(-1, timesteps, 1)
-    #X_train = X_train.reshape(X_train.shape[0], 1, X_train.shape[1])
+    X_train = np.array(x).reshape(-1, timesteps, 1)
     print("Training data shape:", X_train.shape)
-    #X_test = X_test.reshape(int(X_test.shape[0]/timesteps), timesteps, X_test.shape[1])
-    #print("Test data shape:", X_test.shape)
- 
+
     #Define model 
-    model = autoencoder_DNN(X_train) 
+    model = autoencoder_Conv(X_train) 
     model.compile(optimizer='adam', loss='mse')
     model.summary()
 

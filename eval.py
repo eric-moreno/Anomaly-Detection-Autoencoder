@@ -1,5 +1,6 @@
 # import libraries
 import os
+import sys
 import requests
 import pandas as pd
 import numpy as np
@@ -56,7 +57,7 @@ def main(args):
         print('WARNING: not a supported sampling frequency for simulated data')
         print('Sampling Frequency: %s'%(freq))
     
-    n_noise_events = 1000
+    n_noise_events = 5000
     noise_samples = load['noise_samples']['%s_strain'%(str(detector).lower())][:][:n_noise_events]
     
     if bool(int(filtered)):
@@ -70,11 +71,13 @@ def main(args):
     X_train = scaler.transform(x_noise)
     
     # Trim dataset to be batch-friendly
-    #if X_train.shape[0]%timesteps != 0: 
-    #    X_train = X_train[:-1*int(X_train.shape[0]%timesteps)]
-        
+    x = []
+    for event in range(len(X_train)): 
+        if X_train[event].shape[0]%timesteps != 0: 
+            x.append(X_train[event][:-1*int(X_train[event].shape[0]%timesteps)])
+    
     # reshape inputs for LSTM [samples, timesteps, features]
-    X_train = X_train.reshape(-1, timesteps, 1)
+    X_train = np.array(x).reshape(-1, timesteps, 1)
     print("Training data shape:", X_train.shape)
     
     # load the autoencoder network model
@@ -83,37 +86,23 @@ def main(args):
     
     ### Evaluating on training data to find threshold ### 
     print('Evaluating Model on train data. This make take a while...')
-    X_pred = model.predict(X_train)
+    X_pred_train = model.predict(X_train)
     print('Finished evaluating model on train data')
     
     loss_fn = MeanSquaredError(reduction='none')
-    losses = loss_fn(X_train, X_pred).eval(session=tf.compat.v1.Session())
-    averaged_losses = np.mean(losses, axis=1)
+    losses = loss_fn(X_train, X_pred_train).eval(session=tf.compat.v1.Session())
+    averaged_losses = np.mean(losses, axis=1).reshape(n_noise_events, -1)
+    max_losses = [np.max(event) for event in averaged_losses]
     
-    '''
-    X_pred = X_pred.reshape(X_pred.shape[0]*timesteps, X_pred.shape[2])
-    X_pred = pd.DataFrame(X_pred)
-
-    scored = pd.DataFrame()
-    Xtrain = X_train.reshape(X_train.shape[0]*timesteps, X_train.shape[2])
-    scored['Loss_mae'] = np.mean(np.abs(X_pred-Xtrain), axis = 1)
-    plt.figure(figsize=(16,9), dpi=80)
-    plt.title('Loss Distribution', fontsize=16)
-    sns.distplot(scored['Loss_mae'], bins = 20, kde= True, color = 'blue');
-    plt.savefig('%s/loss_train_spread.jpg'%(outdir))
-    '''
-    
-    threshold = np.max(averaged_losses)
-    print('The threshold is: %s'%(str(threshold)))
-    
-    roc_steps = 20
-    FPRs = np.logspace(-2, 1.9999999, roc_steps)
+    roc_steps = 400
+    FPRs = np.linspace(0, 100, roc_steps)
     thresholds = []
     for fpr in FPRs:
-        thresholds.append(np.percentile(averaged_losses, fpr))
-        
+        thresholds.append(np.percentile(max_losses, 100.0-fpr))
+    
+    
     # Evaluate on 10 test data events 
-    n_injection_events = 1000
+    n_injection_events = 5000
     injection_samples = load['injection_samples']['%s_strain'%(str(detector).lower())][:][:n_injection_events]
     times = load['injection_samples']['event_time']
     random_samples = RandSample(range(0, len(injection_samples)), 10)
@@ -129,21 +118,27 @@ def main(args):
     X_test = scaler.transform(x_injection)
     #X_test = scaler.transform(y.reshape(-1, 1))
     
+    x = []
+    for event in range(len(X_test)): 
+        if X_test[event].shape[0]%timesteps != 0: 
+            x.append(X_test[event][:-1*int(X_test[event].shape[0]%timesteps)])
+    
+    # reshape inputs for LSTM [samples, timesteps, features]
+    X_test = np.array(x).reshape(-1, timesteps, 1)
+    
+    print('Evaluating Model on test data. This make take a while...')
+    X_pred_test = model.predict(X_test)
+    print('Finished evaluating model on test data')
+    
+    losses = loss_fn(X_test, X_pred_test).eval(session=tf.compat.v1.Session())
+    averaged_losses = np.mean(losses, axis=1).reshape(n_injection_events, -1)
+    
     gw_pred = [[] for i in range(roc_steps)]
-    for i in range(len(X_test)):
-        event = X_test[i]
-        if event.shape[0]%timesteps != 0: 
-            event = event[:-1*int(event.shape[0]%timesteps)]
-        event = event.reshape(-1, timesteps, 1)
-        
-        X_pred = model.predict(event)
-        
-        loss_fn = MeanSquaredError(reduction='none')
-        losses = loss_fn(event, X_pred).eval(session=tf.compat.v1.Session())
-        batch_loss = np.mean(losses, axis=1)
-        
+    for i in range(len(averaged_losses)):
+        batch_loss = averaged_losses[i]
+
         for fpr in range(len(FPRs)):
-            if np.max(batch_loss) >= thresholds[fpr]: 
+            if np.max(batch_loss) > thresholds[fpr]: 
                 gw_pred[fpr].append(1)
             else: 
                 gw_pred[fpr].append(0)
@@ -152,7 +147,7 @@ def main(args):
     TPRs = []
     for fpr in range(len(FPRs)): 
         TP = np.sum(gw_pred[fpr])
-        TPRs.append(TP/float(n_injection_events))
+        TPRs.append(float(TP)/float(n_injection_events))
         
     #print('Model has correctly identified %s gravitational-waves'%())
     #fpr, tpr, _ = roc_curve(gw_truth, gw_pred)
@@ -161,19 +156,20 @@ def main(args):
     plt.figure()
     lw = 2
     plt.plot(FPRs, TPRs, color='darkorange',
-         lw=lw, label='ROC curve (area = %0.2f)' % roc_auc)
+         lw=lw, label='ROC curve (area = %0.5f)' % roc_auc)
     plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
-    plt.xlim([1e-4, 1.0])
+    plt.xlim([0, 1])
     plt.ylim([0.0, 1.05])
     plt.xlabel('False Positive Rate')
     plt.ylabel('True Positive Rate')
-    plt.xscale('log')
+    #plt.xscale('log')
     plt.title('LIGO anomaly detection algorithm LSTM')
     plt.legend(loc="lower right")
     plt.savefig('%s/ROC_curve.jpg'%(outdir))
+
     sys.exit()
     
-    
+    ### Enable if needed - these are additional plots to check if methods are working ###
     for random_sample in random_samples: 
         event = X_test[random_sample]
         time = times[random_sample] - 1000000000
@@ -185,7 +181,6 @@ def main(args):
         
         X_pred = model.predict(event)
         
-        loss_fn = MeanSquaredError(reduction='none')
         losses = loss_fn(event, X_pred).eval(session=tf.compat.v1.Session())
         batch_loss = np.mean(losses, axis=1)
         
