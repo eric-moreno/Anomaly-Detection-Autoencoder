@@ -76,7 +76,7 @@ def main(args):
     print('Finished evaluating model on train data')
 
     loss_fn = MeanSquaredError(reduction='none')
-    losses = loss_fn(X_train, X_pred).eval(session=tf.compat.v1.Session())
+    losses = loss_fn(X_train, X_pred).numpy()
     averaged_losses = np.mean(losses, axis=1)
 
     '''
@@ -127,7 +127,7 @@ def main(args):
         X_pred = model.predict(event)
 
         loss_fn = MeanSquaredError(reduction='none')
-        losses = loss_fn(event, X_pred).eval(session=tf.compat.v1.Session())
+        losses = loss_fn(event, X_pred).numpy()
         batch_loss = np.mean(losses, axis=1)
 
         for fpr in range(len(FPRs)):
@@ -172,7 +172,7 @@ def main(args):
         X_pred = model.predict(event)
 
         loss_fn = MeanSquaredError(reduction='none')
-        losses = loss_fn(event, X_pred).eval(session=tf.compat.v1.Session())
+        losses = loss_fn(event, X_pred).numpy()
         batch_loss = np.mean(losses, axis=1)
 
         fig, ax = plt.subplots(figsize=(14, 6), dpi=80)
