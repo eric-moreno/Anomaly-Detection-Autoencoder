@@ -62,7 +62,7 @@ def TPR_FPR_arrays(noise_array, injection_array, model_outdir, steps, num_entrie
     max_losses = [np.max(event) for event in averaged_losses]
 
     roc_steps = num_entries
-    FPRs = np.linspace(0, 1, roc_steps)
+    FPRs = np.logspace(-4, 0, roc_steps)
     thresholds = [np.quantile(max_losses, 1.0-fpr) for fpr in FPRs]
     
     print('Evaluating Model on test data. This make take a while...')
@@ -178,14 +178,14 @@ def main(args):
         plt.plot(FPRs, TPRs,
              lw=lw, label='%s (auc = %0.5f)'%(name, auc(FPRs, TPRs)))
     plt.plot([0, 1], [0, 1], lw=lw, linestyle='--')
-    plt.xlim([0, 1])
+    plt.xlim([1e-4, 1])
     plt.ylim([0.0, 1.05])
     plt.xlabel('False Positive Rate')
     plt.ylabel('True Positive Rate')
-    #plt.xscale('log')
+    plt.xscale('log')
     plt.title('LIGO Unsupervised Autoencoder Anomaly Detection')
     plt.legend(loc="lower right")
-    plt.savefig('%s/ROC_curve.jpg'%(outdir))
+    plt.savefig('%s/ROC_curve_log.jpg'%(outdir))
 
     sys.exit()
     
