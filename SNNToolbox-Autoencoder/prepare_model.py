@@ -62,14 +62,20 @@ def prepare_model():
     joblib.dump(scaler, scaler_filename)
 
     # Trim dataset to be batch-friendly and reshape into timestep format
-    if X_train.shape[0] % timesteps != 0:
-        X_train = X_train[:-1 * int(X_train.shape[0] % timesteps)]
+    x = []
+    for event in range(len(X_train)):
+        if X_train[event].shape[0] % timesteps != 0:
+            x.append(X_train[event][:-1 * int(X_train[event].shape[0] % timesteps)])
+    X_train = np.array(x)
 
+    x = []
     X_test = injection_samples
-    if X_test.shape[0] % timesteps != 0:
-        X_test = X_test[:-1 * int(X_test.shape[0] % timesteps)]
+    for event in range(len(X_test)):
+        if X_test[event].shape[0] % timesteps != 0:
+            x.append(X_test[event][:-1 * int(X_test[event].shape[0] % timesteps)])
+    X_test = np.array(x)
 
-    # Reshape inputs for LSTM [samples, timesteps, features]
+    # Reshape inputs for LSTM
     X_train = X_train.reshape(-1, timesteps)
     print("Training data shape:", X_train.shape)
     np.savez('x_test.npz', arr_0=X_train)
