@@ -43,7 +43,7 @@ def main(args):
     freq = args.freq
     filtered = args.filtered
     timesteps = int(args.timesteps)
-    os.system('mkdir -p %s' % outdir)
+    os.system(f'mkdir {outdir}')
 
     # Load train and test data
     load = h5.File('../../dataset/default_simulated.hdf', 'r')
