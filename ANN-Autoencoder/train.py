@@ -29,7 +29,6 @@ def augmentation(X_train, timesteps):
     for sample in X_train:
         if sample.shape[0] % timesteps != 0:
             corrected_sample = sample[:-1 * int(sample.shape[0] % timesteps)]
-        # sliding_sample = np.array([sample[i:i+timesteps][:] for i in range(len(sample)-timesteps)])
         sliding_sample = np.array([corrected_sample[i:i + timesteps][:] for i in [int(timesteps / 2) * n for n in range(
             int(len(corrected_sample) / (timesteps / 2)) - 1)]])
         x.append(sliding_sample)
@@ -56,7 +55,7 @@ def main(args):
     else:
         return print(f'Given frequency {freq}kHz is not supported. Correct values are 2 or 4kHz.')
 
-    noise_samples = load['noise_samples']['%s_strain' % (str(detector).lower())][:][:]
+    noise_samples = load['noise_samples']['%s_strain' % (str(detector).lower())][:][:45000]
 
     # With LIGO simulated data, the sample isn't pre-filtered so need to filter again.
     # Real data is not filtered yet.
@@ -84,7 +83,6 @@ def main(args):
 
     # Reshape inputs for LSTM [samples, timesteps, features]
     X_train = X_train.reshape(-1, timesteps, 1)
-    # X_train = X_train.reshape(X_train.shape[0], 1, X_train.shape[1])
     print("Training data shape:", X_train.shape)
 
     # Define the model
@@ -93,7 +91,7 @@ def main(args):
     model.summary()
 
     # Fit the model to the data
-    nb_epochs = 200
+    nb_epochs = 300
     batch_size = 1024
     early_stop = EarlyStopping(monitor='val_loss', patience=10, verbose=0, mode='min')
     mcp_save = ModelCheckpoint(f'{outdir}/best_model.hdf5', save_best_only=True, monitor='val_loss', mode='min')
@@ -123,7 +121,7 @@ if __name__ == "__main__":
                         action='store', dest='freq', default=2)
     parser.add_argument("--filtered", help="Apply LIGO's bandpass and whitening filters",
                         action='store', dest='filtered', default=1)
-    parser.add_argument("--timesteps", help="Number of timesteps passed to LSTM",
+    parser.add_argument("--timesteps", help="Number of timesteps passed to model",
                         action='store', dest='timesteps', default=100)
 
     args = parser.parse_args()
