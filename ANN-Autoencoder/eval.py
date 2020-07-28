@@ -1,38 +1,29 @@
-# import libraries
-import os
-import sys
-import requests
+""" Evaluation of model trained for anomaly detection. """
+
+import os, sys
+import argparse
 import pandas as pd
 import numpy as np
-import setGPU
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.externals import joblib
+import joblib
 import seaborn as sns
-sns.set(color_codes=True)
 import matplotlib.pyplot as plt
-#%matplotlib inline
 import h5py as h5
-from gwpy.timeseries import TimeSeries
-
-from numpy.random import seed
-from tensorflow import set_random_seed
 import tensorflow as tf
-
-
-from keras import regularizers
+from gwpy.timeseries import TimeSeries
 from keras.models import load_model
 from tensorflow.keras.losses import mean_absolute_error, MeanAbsoluteError, mean_squared_error, MeanSquaredError
 from random import sample as RandSample
-import argparse
-from sklearn.metrics import roc_curve, auc, accuracy_score
+from sklearn.metrics import auc
 
-from model import autoencoder_LSTM, autoencoder_Conv, autoencoder_DeepConv
+sns.set(color_codes=True)
+
 
 def filters(array, sample_frequency):
+    """ Apply preprocessing such as whitening and bandpass """
     strain = TimeSeries(array, sample_rate=int(sample_frequency))
-    white_data = strain.whiten(fftlength=4,fduration=4)
+    white_data = strain.whiten(fftlength=4, fduration=4)
     bp_data = white_data.bandpass(50, 250)
-    return(bp_data.value)
+    return bp_data.value
 
 def TPR_FPR_arrays(noise_array, injection_array, model_outdir, steps, num_entries=400): 
     # load the autoencoder network model
@@ -87,47 +78,40 @@ def TPR_FPR_arrays(noise_array, injection_array, model_outdir, steps, num_entrie
     # Calculate corresponding TPR
     TPRs = [float(np.sum(gw_pred[fpr]))/n_injection_events for fpr in range(len(FPRs))]
     return(TPRs, FPRs)
-    
+
 def main(args):
+    """ Main function to evaluate the model """
     outdir = args.outdir
     detector = args.detector
     freq = args.freq
     filtered = args.filtered
     timesteps = int(args.timesteps)
-    os.system('mkdir -p %s'%outdir)
-    
-    load = h5.File('data/default_simulated.hdf','r') 
-    
-    if int(freq) == 2: 
+    os.system('mkdir -p %s' % outdir)
+
+    load = h5.File('../../dataset/default_simulated.hdf', 'r')
+
+    # Define frequency in Hz instead of KHz
+    if int(freq) == 2:
         freq = 2048
-    elif int(freq) == 4: 
+    elif int(freq) == 4:
         freq = 4096
-        
-    if freq%2048 != 0: 
-        print('WARNING: not a supported sampling frequency for simulated data')
-        print('Sampling Frequency: %s'%(freq))
-    
+    else:
+        return print(f'Given frequency {freq}kHz is not supported. Correct values are 2 or 4kHz.')
+
     n_noise_events = 5000
     noise_samples = load['noise_samples']['%s_strain'%(str(detector).lower())][:][-n_noise_events:]
-    
+
     if bool(int(filtered)):
-        print('filtering data with whitening and bandpass')
+        print('Filtering data with whitening and bandpass')
+        print(f'Sample Frequency: {freq} Hz')
         x_noise = [filters(sample, freq) for sample in noise_samples]
-        print('Done!')
-        
-    # Load previous scaler and transform    
-    scaler_filename = "%s/scaler_data_%s"%(outdir, detector)
-    scaler = joblib.load(scaler_filename) 
+        print('Filtering completed')
+
+    # Load previous scaler and transform
+    scaler_filename = f"{outdir}/scaler_data_{detector}"
+    scaler = joblib.load(scaler_filename)
     X_train = scaler.transform(x_noise)
-    
-    # Trim dataset to be batch-friendly
-    #x = []
-    #for event in range(len(X_train)): 
-    #    if X_train[event].shape[0]%timesteps != 0: 
-    #        x.append(X_train[event][:-1*int(X_train[event].shape[0]%timesteps)])
-    
-    # reshape inputs for LSTM [samples, timesteps, features]
-    #X_train = np.array(x).reshape(-1, timesteps, 1)
+
     print("Training data shape:", X_train.shape)
     
     n_injection_events = 5000
@@ -142,26 +126,12 @@ def main(args):
     scaler_filename = "%s/scaler_data_%s"%(outdir, detector)
     scaler = joblib.load(scaler_filename) 
     X_test = scaler.transform(x_injection)
-    #X_test = scaler.transform(y.reshape(-1, 1))
-    
-    #x = []
-    #for event in range(len(X_test)): 
-    #    if X_test[event].shape[0]%timesteps != 0: 
-    #        x.append(X_test[event][:-1*int(X_test[event].shape[0]%timesteps)])
-    
-    # reshape inputs for LSTM [samples, timesteps, features]
-    #X_test = np.array(x).reshape(-1, timesteps, 1)
+
     print("Testing data shape:", X_test.shape)
     
-    directory_list = ['simdata_L1_2KHz_1024Batch_50steps_filtered_LSTM_largesim_mse', 'simdata_L1_2KHz_1024Batch_50steps_filtered_GRU_largesim_mae', 'simdata_L1_2KHz_1024Batch_100steps_filtered_DNN_largesim_mse_run2', 'simdata_L1_2KHz_1024Batch_108steps_filtered_Conv_largesim_mse', 'simdata_L1_2KHz_1024Batch_108steps_filtered_ConvDNN_largesim_mse']
-    
-    #directory_list = ['simdata_L1_2KHz_1024Batch_100steps_filtered_DNN_largesim_mse_run2', 'simdata_L1_2KHz_1024Batch_108steps_filtered_Conv_largesim_mse', 'simdata_L1_2KHz_1024Batch_108steps_filtered_ConvDNN_largesim_mse']
-    
-    
-    names = ['LSTM Autoencoder', 'GRU Antoencoder', 'DNN Autoencoder', 'CNN Autoencoder', 'CNN-DNN Autoencoder']
-    #names = ['DNN Autoencoder', 'CNN Autoencoder', 'CNN-DNN Autoencoder']
+    directory_list = [outdir]
+    names = ['LSTM Autoencoder']
     timesteps = [50, 50, 100, 108, 108]
-    #timesteps = [100, 108, 108]
     FPR_set = []
     TPR_set = []
     
@@ -188,11 +158,10 @@ def main(args):
     plt.savefig('%s/ROC_curve_log.jpg'%(outdir))
 
     sys.exit()
+    ### Enable if needed - these are additional plots to check if methods are working in unsupervised learning approach###
     
     times = load['injection_samples']['event_time']
     random_samples = RandSample(range(0, len(injection_samples)), 10)
-    
-    ### Enable if needed - these are additional plots to check if methods are working ###
     for random_sample in random_samples: 
         event = X_test[random_sample]
         time = times[random_sample] - 1000000000
@@ -241,17 +210,21 @@ def main(args):
         plt.legend(loc='upper left')
         plt.savefig('%s/test_threshold_%s_8sec.jpg'%(outdir, time))
         
-    
+
 if __name__ == "__main__":
-    """ This is executed when run from the command line """
     parser = argparse.ArgumentParser()
-    
+
     # Required positional arguments
     parser.add_argument("outdir", help="Required output directory")
-    parser.add_argument("detector", help="Required output directory")
-    parser.add_argument("--freq", help="Sampling frequency of detector in KHz", action='store', dest='freq', default = 4)
-    parser.add_argument("--filtered", help="Apply LIGO's bandpass and whitening filters", action='store', dest='filtered', default = 1)
-    parser.add_argument("--timesteps", help="Number of timesteps passed to LSTM", action='store', dest='timesteps', default = 100)
-    
+    parser.add_argument("detector", help="LIGO Detector")
+
+    # Additional arguments
+    parser.add_argument("--freq", help="Sampling frequency of detector in KHz",
+                        action='store', dest='freq', default=2)
+    parser.add_argument("--filtered", help="Apply LIGO's bandpass and whitening filters",
+                        action='store', dest='filtered', default=1)
+    parser.add_argument("--timesteps", help="Number of timesteps passed to LSTM",
+                        action='store', dest='timesteps', default=100)
+
     args = parser.parse_args()
     main(args)
