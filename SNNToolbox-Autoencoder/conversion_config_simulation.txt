@@ -2,7 +2,7 @@
 path_wd = .
 dataset_path = .
 runlabel = test
-filename_ann = model2SNN
+filename_ann = autoencoder2SNN
 
 [tools]
 evaluate_ann = True

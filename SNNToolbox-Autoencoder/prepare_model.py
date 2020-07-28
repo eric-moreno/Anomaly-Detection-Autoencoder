@@ -1,7 +1,6 @@
 """ Train autoencoder for anomaly detection in given time series data. """
 
 import os
-import argparse
 import numpy as np
 import joblib
 import seaborn as sns
@@ -10,7 +9,7 @@ import h5py as h5
 from sklearn.preprocessing import MinMaxScaler
 from gwpy.timeseries import TimeSeries
 from keras.callbacks import EarlyStopping, ModelCheckpoint
-from model import autoencoder_LSTM, autoencoder_ConvLSTM, autoencoder_ConvDNN, autoencoder_DNN, autoencoder_Conv
+from architectures import autoencoder_ConvDNN, autoencoder_DNN, autoencoder_Conv
 
 sns.set(color_codes=True)
 
@@ -23,25 +22,13 @@ def filters(array, sample_frequency):
     return bp_data.value
 
 
-def augmentation(X_train, timesteps):
-    """ Data augmentation process used to extend dataset """
-    x = []
-    for sample in X_train:
-        if sample.shape[0] % timesteps != 0:
-            corrected_sample = sample[:-1 * int(sample.shape[0] % timesteps)]
-        sliding_sample = np.array([corrected_sample[i:i + timesteps][:] for i in [int(timesteps / 2) * n for n in range(
-            int(len(corrected_sample) / (timesteps / 2)) - 1)]])
-        x.append(sliding_sample)
-    return np.array(x)
-
-
-def main(args):
+def prepare_model():
     """ Main function to prepare and train the model """
-    outdir = args.outdir
-    detector = args.detector
-    freq = args.freq
-    filtered = args.filtered
-    timesteps = int(args.timesteps)
+    outdir = "Outputs"
+    detector = "L1"
+    freq = 2
+    filtered = 1
+    timesteps = 100
     os.system(f'mkdir {outdir}')
 
     # Load train and test data
@@ -55,7 +42,10 @@ def main(args):
     else:
         return print(f'Given frequency {freq}kHz is not supported. Correct values are 2 or 4kHz.')
 
-    noise_samples = load['noise_samples']['%s_strain' % (str(detector).lower())][:][:45000]
+    noise_samples = load['noise_samples']['%s_strain' % (str(detector).lower())][:][:]
+    print("Noise samples shape:", noise_samples.shape)
+    injection_samples = load['injection_samples']['%s_strain' % (str(detector).lower())][:]
+    print("Injection samples shape:", injection_samples.shape)
 
     # With LIGO simulated data, the sample isn't pre-filtered so need to filter again.
     # Real data is not filtered yet.
@@ -71,9 +61,6 @@ def main(args):
     scaler_filename = f"{outdir}/scaler_data_{detector}"
     joblib.dump(scaler, scaler_filename)
 
-    # Data augmentation needed if not enough data
-    # X_train = augmentation(X_train, timesteps)
-
     # Trim dataset to be batch-friendly and reshape into timestep format
     x = []
     for event in range(len(X_train)):
@@ -81,17 +68,29 @@ def main(args):
             x.append(X_train[event][:-1 * int(X_train[event].shape[0] % timesteps)])
     X_train = np.array(x)
 
-    # Reshape inputs for LSTM [samples, timesteps, features]
-    X_train = X_train.reshape(-1, timesteps, 1)
+    x = []
+    X_test = injection_samples
+    for event in range(len(X_test)):
+        if X_test[event].shape[0] % timesteps != 0:
+            x.append(X_test[event][:-1 * int(X_test[event].shape[0] % timesteps)])
+    X_test = np.array(x)
+
+    # Reshape inputs for LSTM
+    X_train = X_train.reshape(-1, timesteps)
     print("Training data shape:", X_train.shape)
+    np.savez('x_test.npz', arr_0=X_train)
+    X_test = X_test.reshape(-1, timesteps)
+    print("Test data shape:", X_test.shape)
+    np.savez('y_test.npz', arr_0=X_train)
+    print("Test and Train data saved in npz format")
 
     # Define the model
-    model = autoencoder_LSTM(X_train)
+    model = autoencoder_DNN(X_train)
     model.compile(optimizer='adam', loss='mse')
     model.summary()
 
     # Fit the model to the data
-    nb_epochs = 300
+    nb_epochs = 200
     batch_size = 1024
     early_stop = EarlyStopping(monitor='val_loss', patience=10, verbose=0, mode='min')
     mcp_save = ModelCheckpoint(f'{outdir}/best_model.hdf5', save_best_only=True, monitor='val_loss', mode='min')
@@ -110,19 +109,4 @@ def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-
-    # Required positional arguments
-    parser.add_argument("outdir", help="Required output directory")
-    parser.add_argument("detector", help="LIGO Detector")
-
-    # Additional arguments
-    parser.add_argument("--freq", help="Sampling frequency of detector in KHz",
-                        action='store', dest='freq', default=2)
-    parser.add_argument("--filtered", help="Apply LIGO's bandpass and whitening filters",
-                        action='store', dest='filtered', default=1)
-    parser.add_argument("--timesteps", help="Number of timesteps passed to model",
-                        action='store', dest='timesteps', default=100)
-
-    args = parser.parse_args()
-    main(args)
+    prepare_model()
