@@ -9,7 +9,7 @@ import h5py as h5
 from sklearn.preprocessing import MinMaxScaler
 from gwpy.timeseries import TimeSeries
 from keras.callbacks import EarlyStopping, ModelCheckpoint
-from architectures import autoencoder_ConvDNN, autoencoder_DNN, autoencoder_Conv
+from architectures_unsupervised import autoencoder_ConvDNN, autoencoder_DNN, autoencoder_Conv
 
 sns.set(color_codes=True)
 
