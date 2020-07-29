@@ -1,3 +1,5 @@
+""" Supervised anomaly detection in LIGO data with Spiking Neural Networks running on Loihi """
+
 import os
 import collections
 import warnings
@@ -8,15 +10,55 @@ import nengo_dl
 import numpy as np
 import tensorflow as tf
 import h5py as h5
+import joblib
 from gwpy.timeseries import TimeSeries
-from sklearn.utils import shuffle
+from sklearn.metrics import confusion_matrix
+from sklearn.utils.multiclass import unique_labels
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.externals import joblib
 
 from keras.layers import Input, Dense
 from keras.models import Model
 
 import nengo_loihi
+
+
+def plot_confusion_matrix(y_true, y_pred, classes, normalize=False, title=None, cmap=plt.cm.Blues):
+    """ This function prints and plots the confusion matrix. Normalization can be added by setting `normalize=True` """
+    if not title:
+        if normalize:
+            title = 'Normalized confusion matrix'
+        else:
+            title = 'Confusion matrix, without normalization'
+
+    # Compute confusion matrix
+    cm = confusion_matrix(y_true, y_pred)
+    # Only use the labels that appear in the data
+    classes = classes[unique_labels(y_true, y_pred)]
+    if normalize:
+        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+
+    print(title)
+    print(cm)
+
+    fig, ax = plt.subplots()
+    im = ax.imshow(cm, interpolation='nearest', cmap=cmap)
+    ax.figure.colorbar(im, ax=ax)
+    ax.set(xticks=np.arange(cm.shape[1]), yticks=np.arange(cm.shape[0]), xticklabels=classes, yticklabels=classes,
+           title=title, ylabel='True label', xlabel='Predicted label')
+
+    # Rotate the tick labels and set their alignment.
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
+
+    # Loop over data dimensions and create text annotations.
+    fmt = '.2f' if normalize else 'd'
+    thresh = cm.max() / 2.
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            ax.text(j, i, format(cm[i, j], fmt), ha="center", va="center",
+                    color="white" if cm[i, j] > thresh else "black")
+    fig.tight_layout()
+    return ax
 
 
 def filters(array, sample_frequency):
@@ -44,6 +86,9 @@ filtered = 1
 timesteps = 100
 os.system(f'mkdir {outdir}')
 
+# counter of plots to save
+plot_no = 0
+
 # Load train and test data
 load = h5.File('../../dataset/default_simulated.hdf', 'r')
 
@@ -55,15 +100,23 @@ elif int(freq) == 4:
 else:
     print(f'Given frequency {freq}kHz is not supported. Correct values are 2 or 4kHz.')
 
-datapoints = 5000
+datapoints = len(load['injection_samples']['%s_strain' % (str(detector).lower())])
 noise_samples = load['noise_samples']['%s_strain' % (str(detector).lower())][:datapoints]
 injection_samples = load['injection_samples']['%s_strain' % (str(detector).lower())][:datapoints]
-train_data = np.concatenate((noise_samples, injection_samples))
-train_truth = np.concatenate((np.zeros(datapoints), np.ones(datapoints)))
-train_data, train_truth = shuffle(train_data, train_truth)
-
 print("Noise samples shape:", noise_samples.shape)
 print("Injection samples shape:", injection_samples.shape)
+
+features = np.concatenate((noise_samples, injection_samples))
+# targets = np.concatenate((np.zeros(datapoints), np.ones(datapoints)))
+
+gw = np.concatenate((np.zeros(datapoints), np.ones(datapoints)))
+noise = np.concatenate((np.ones(datapoints), np.zeros(datapoints)))
+targets = np.transpose(np.array([gw, noise]))
+
+# splitting the train / test data in ratio 80:20
+train_data, test_data, train_truth, test_truth = train_test_split(features, targets, test_size=0.2)
+class_names = np.array(['noise', 'GW'], dtype=str)
+
 
 # With LIGO simulated data, the sample isn't pre-filtered so need to filter again. Real data is not filtered yet.
 if bool(int(filtered)):
@@ -80,9 +133,13 @@ if bool(int(filtered)):
 
 # Reshape inputs
 train_data = train_data.reshape((train_data.shape[0], 1, -1))
-print("Training data shape:", train_data.shape)
+print("Train data shape:", train_data.shape)
 train_truth = train_truth.reshape((train_truth.shape[0], 1, -1))
-print("Labeled data shape:", train_truth.shape)
+print("Train labels data shape:", train_truth.shape)
+test_data = test_data.reshape((test_data.shape[0], 1, -1))
+print("Test data shape:", test_data.shape)
+test_truth = test_truth.reshape((test_truth.shape[0], 1, -1))
+print("Test labels data shape:", test_truth.shape)
 
 # Define the model
 inp = Input(shape=(train_data.shape[2],), name="input")
@@ -103,7 +160,7 @@ L3 = L3_layer(L2)
 
 # since this final output layer has no activation function,
 # it will be converted to a `nengo.Node` and run off-chip
-output = Dense(units=1, name="output")(L3)
+output = Dense(units=2, name="output")(L3)
 
 model = Model(inputs=inp, outputs=output)
 model.summary()
@@ -131,10 +188,6 @@ def train(params_file="./keras_to_loihi_params", epochs=1, **kwargs):
 # train this network with normal ReLU neurons
 train(epochs=2, swap_activations={tf.nn.relu: nengo.RectifiedLinear()})
 
-# just to compile the model for now
-test_data = train_data
-test_truth = train_truth
-
 
 def run_network(
         activation,
@@ -144,6 +197,7 @@ def run_network(
         synapse=None,
         n_test=100,
         n_plots=1,
+        plot_idx=-1
 ):
     # convert the keras model to a nengo network
     nengo_converter = nengo_dl.Converter(
@@ -179,7 +233,16 @@ def run_network(
 
     # compute accuracy on test data, using output of network on last timestep
     test_predictions = np.argmax(data[nengo_output][:, -1], axis=-1)
-    print("Test accuracy: %.2f%%" % (100 * np.mean(test_predictions == test_truth[:n_test, 0, 0])))
+    correct = test_truth[:n_test, 0, 0]
+    print("Test accuracy: %.2f%%" % (100 * np.mean(test_predictions == correct)))
+
+    predicted = np.array(test_predictions, dtype=int)
+    correct = np.array(correct, dtype=int)
+
+    # Plot normalized confusion matrix
+    plot_confusion_matrix(correct, predicted, classes=class_names, normalize=True,
+                          title='Normalized confusion matrix')
+    plt.savefig(outdir + f'/{plot_idx}_confusion_matrix.jpg')
 
     # plot the results
     mean_rates = []
@@ -187,8 +250,8 @@ def run_network(
         plt.figure(figsize=(12, 6))
 
         plt.subplot(1, 2, 1)
-        # plt.title("Input image")
-        # plt.imshow(test_data[i, 0].reshape((28, 28)), cmap="gray")
+        # TODO: add a plot of current input signal
+        # plt.title("Input signal")
         # plt.axis("off")
 
         n_layers = len(probes)
@@ -245,19 +308,20 @@ def is_spiking_type(neuron_type):
 
 
 # test the trained networks on test set
-mean_rates = run_network(activation=nengo.RectifiedLinear(), n_steps=10, )
-# plt.show()
-plt.close()
+mean_rates = run_network(activation=nengo.RectifiedLinear(), n_steps=10, plot_idx=plot_no)
+plt.savefig(outdir + f'/{plot_no}.jpg')
+plot_no += 1
 
 # test the trained networks using spiking neurons
-run_network(activation=nengo.SpikingRectifiedLinear(), scale_firing_rates=100, synapse=0.005, )
-# plt.show()
-plt.close()
+run_network(activation=nengo.SpikingRectifiedLinear(), scale_firing_rates=100, synapse=0.005, plot_idx=plot_no)
+plt.savefig(outdir + f'/{plot_no}.jpg')
+plot_no += 1
 
 # test the trained networks using spiking neurons
-run_network(activation=nengo_loihi.neurons.LoihiSpikingRectifiedLinear(), scale_firing_rates=100, synapse=0.005, )
-# plt.show()
-plt.close()
+run_network(activation=nengo_loihi.neurons.LoihiSpikingRectifiedLinear(), scale_firing_rates=100, synapse=0.005,
+            plot_idx=plot_no)
+plt.savefig(outdir + f'/{plot_no}.jpg')
+plot_no += 1
 
 
 def plot_activation(neurons, min, max, **kwargs):
@@ -274,14 +338,14 @@ def plot_activation(neurons, min, max, **kwargs):
 plt.figure(figsize=(10, 3))
 plot_activation(nengo.RectifiedLinear(), -100, 1000)
 plot_activation(nengo_loihi.neurons.LoihiSpikingRectifiedLinear(), -100, 1000)
-# plt.show()
-plt.close()
+plt.savefig(outdir + f'/{plot_no}.jpg')
+plot_no += 1
 
 plt.figure(figsize=(10, 3))
 plot_activation(nengo.LIF(), -4, 40)
 plot_activation(nengo_loihi.neurons.LoihiLIF(), -4, 40)
-# plt.show()
-plt.close()
+plt.savefig(outdir + f'/{plot_no}.jpg')
+plot_no += 1
 
 target_mean = 200
 scale_firing_rates = {
@@ -294,10 +358,10 @@ scale_firing_rates = {
 run_network(
     activation=nengo_loihi.neurons.LoihiSpikingRectifiedLinear(),
     scale_firing_rates=scale_firing_rates,
-    synapse=0.005,
+    synapse=0.005, plot_idx=plot_no
 )
-# plt.show()
-plt.close()
+plt.savefig(outdir + f'/{plot_no}.jpg')
+plot_no += 1
 
 # train this network with normal ReLU neurons
 train(
@@ -312,13 +376,13 @@ run_network(
     activation=nengo_loihi.neurons.LoihiSpikingRectifiedLinear(),
     scale_firing_rates=100,
     params_file="./keras_to_loihi_loihineuron_params",
-    synapse=0.005,
+    synapse=0.005, plot_idx=plot_no
 )
-plt.show()
-# plt.close()
+plt.savefig(outdir + f'/{plot_no}.jpg')
+plot_no += 1
 
 pres_time = 0.03  # how long to present each input, in seconds
-n_test = 5  # how many images to test
+n_test = 100  # how many samples to test
 
 # convert the keras model to a nengo network
 nengo_converter = nengo_dl.Converter(
@@ -373,11 +437,21 @@ with nengo_loihi.Simulator(net) as loihi_sim:
 
     # compute the Loihi accuracy
     loihi_predictions = np.argmax(output, axis=-1)
-    correct = 100 * np.mean(loihi_predictions == test_truth[:n_test, 0, 0])
-    print("Loihi accuracy: %.2f%%" % correct)
+    correct = test_truth[:n_test, 0, 0]
+    accuracy = 100 * np.mean(loihi_predictions == correct)
+    print("Loihi accuracy: %.2f%%" % accuracy)
+
+    predicted = np.array(loihi_predictions, dtype=int)
+    correct = np.array(correct, dtype=int)
+
+    print("Predicted labels: ", predicted)
+    print("Correct labels: ", correct)
 
 plt.figure(figsize=(12, 4))
 timesteps = loihi_sim.trange() / loihi_sim.dt
+
+# plot data given to the network
+# TODO: add a plot of current input signal
 
 # plot the network predictions
 plt.plot(timesteps, loihi_sim.data[nengo_output])
@@ -385,4 +459,18 @@ plt.legend(["%d" % i for i in range(10)], loc="lower left")
 plt.suptitle("Output predictions")
 plt.xlabel("Timestep")
 plt.ylabel("Probability")
-plt.show()
+plt.savefig(outdir + f'/{plot_no}.jpg')
+plot_no += 1
+
+# Plot non-normalized confusion matrix
+plot_confusion_matrix(correct, predicted, classes=class_names,
+                      title='Confusion matrix, without normalization')
+plt.savefig(outdir + f'/{plot_no}.jpg')
+plot_no += 1
+
+# Plot normalized confusion matrix
+plot_confusion_matrix(correct, predicted, classes=class_names, normalize=True,
+                      title='Normalized confusion matrix')
+
+plt.savefig(outdir + f'/{plot_no}.jpg')
+plot_no += 1
