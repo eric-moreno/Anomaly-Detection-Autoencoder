@@ -8,12 +8,12 @@ import nengo_dl
 import numpy as np
 import tensorflow as tf
 import h5py as h5
-from sklearn.preprocessing import MinMaxScaler
 from gwpy.timeseries import TimeSeries
-import joblib
 from sklearn.utils import shuffle
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.externals import joblib
 
-from keras.layers import Input, Dense, Flatten, Reshape
+from keras.layers import Input, Dense
 from keras.models import Model
 
 import nengo_loihi
@@ -27,15 +27,15 @@ def filters(array, sample_frequency):
     return bp_data.value
 
 
-# ignore NengoDL warning about no GPU
+# Ignore NengoDL warning about no GPU
 warnings.filterwarnings("ignore", message="No GPU", module="nengo_dl")
 
-# The results in this notebook should be reproducible across many random seeds.
+# The results in this training should be reproducible across many random seeds.
 # However, some seed values may cause problems, particularly in the `to-spikes` layer
-# where poor initialization can result in no information being sent to the chip. We set
-# the seed to ensure that good results are reproducible without having to re-train.
-np.random.seed(0)
-tf.random.set_seed(0)
+# where poor initialization can result in no information being sent to the chip.
+# We set the seed to ensure that good results are reproducible without having to re-train.
+# np.random.seed(0)
+# tf.random.set_seed(0)
 
 outdir = "Outputs"
 detector = "L1"
@@ -65,95 +65,48 @@ train_data, train_truth = shuffle(train_data, train_truth)
 print("Noise samples shape:", noise_samples.shape)
 print("Injection samples shape:", injection_samples.shape)
 
-# With LIGO simulated data, the sample isn't pre-filtered so need to filter again. Real data
-# is not filtered yet.
-# if bool(int(filtered)):
-#     print('Filtering data with whitening and bandpass')
-#     print('Sample Frequency: %s Hz' % (freq))
-#     x = [filters(sample, freq)[7168:15360] for sample in train_data]
-#     print('Done!')
+# With LIGO simulated data, the sample isn't pre-filtered so need to filter again. Real data is not filtered yet.
+if bool(int(filtered)):
+    print('Filtering data with whitening and bandpass')
+    print('Sample Frequency: %s Hz' % freq)
+    x = [filters(sample, freq)[7168:15360] for sample in train_data]
+    print('Done!')
 
-# # Normalize the data
+# Normalize the data
 # scaler = MinMaxScaler()
-# X_train = scaler.fit_transform(noise_samples)
+# train_data = scaler.fit_transform(noise_samples)
 # scaler_filename = f"{outdir}/scaler_data_{detector}"
 # joblib.dump(scaler, scaler_filename)
 
-
-X_train = train_data.reshape((train_data.shape[0], 1, -1))
+# Reshape inputs
+train_data = train_data.reshape((train_data.shape[0], 1, -1))
+print("Training data shape:", train_data.shape)
 train_truth = train_truth.reshape((train_truth.shape[0], 1, -1))
+print("Labeled data shape:", train_truth.shape)
 
-# # Reshape inputs
-# X_train = X_train.reshape(-1, timesteps, 1)
-print("Training data shape:", X_train.shape)
-# np.savez('x_test.npz', arr_0=X_train)
-# train_truth = train_truth.reshape(-1, timesteps, 1)
-print("Test data shape:", train_truth.shape)
-# np.savez('y_test.npz', arr_0=X_train)
-# print("Test and Train data saved in npz format")
+# Define the model
+inp = Input(shape=(train_data.shape[2],), name="input")
 
-# train_truth = X_train
+# transform input signal to spikes using trainable off-chip layer
+to_spikes_layer = Dense(1024, activation=tf.nn.relu, use_bias=False, )
+to_spikes = to_spikes_layer(inp)
 
-#
-# inputs = Input(shape=(X_train.shape[1], X_train.shape[2]), name="input")
-# x = Flatten()(inputs)
-#
-# # transform input signal to spikes using trainable off-chip layer
-# to_spikes_layer = Dense(X_train.shape[2], activation='relu')(x)
-#
-# # on-chip dense layers
-# x = Dense(int(X_train.shape[2] / 2), activation='relu')(to_spikes_layer)
-# x = Dense(int(X_train.shape[2] / 10), activation='relu')(x)
-# x = Dense(int(X_train.shape[2] / 2), activation='relu')(x)
-# x = Dense(X_train.shape[2], activation='relu')(x)
-#
-# # since this final output layer has no activation function,
-# # it will be converted to a `nengo.Node` and run off-chip
-# output = Reshape((1, X_train.shape[2]))(x)
-# model = Model(inputs=inputs, outputs=output)
-# model.summary()
+# on-chip layers
+L1_layer = Dense(512, activation=tf.nn.relu, use_bias=False, )
+L1 = L1_layer(to_spikes)
 
-# # Reshape inputs for LSTM
-# # X_train = X_train.reshape(-1, 1, timesteps)
-# print("Training data shape:", X_train.shape)
-# np.savez('x_test.npz', arr_0=X_train)
-# # X_test = X_test.reshape(-1, 1, timesteps)
-# print("Test data shape:", train_truth.shape)
-# np.savez('y_test.npz', arr_0=train_truth)
-# print("Test and Train data saved in npz format")
-
-# inputs = Input(shape=(X_train.shape[1], X_train.shape[2]))
-# x = Flatten()(inputs)
-# x = Dense(int(X_train.shape[2] / 2), activation='relu')(x)
-# x = Dense(int(X_train.shape[2] / 10), activation='relu')(x)
-# x = Dense(int(X_train.shape[2] / 2), activation='relu')(x)
-# x = Dense(X_train.shape[2], activation='relu')(x)
-# output = Reshape((X_train.shape[2], X_train.shape[1]))(x)
-# model = Model(inputs=inputs, outputs=output)
-
-inp = Input(shape=(X_train.shape[2],), name="input")
-
-L1_layer = Dense(1024, activation='relu')
-L1 = L1_layer(inp)
-
-L2_layer = Dense(128, activation='relu')
+L2_layer = Dense(128, activation=tf.nn.relu, use_bias=False, )
 L2 = L2_layer(L1)
 
-L3_layer = Dense(64, activation='relu')
+L3_layer = Dense(64, activation=tf.nn.relu, use_bias=False, )
 L3 = L3_layer(L2)
 
-output = Dense(1, activation='relu')(L3)
+# since this final output layer has no activation function,
+# it will be converted to a `nengo.Node` and run off-chip
+output = Dense(units=1, name="output")(L3)
 
 model = Model(inputs=inp, outputs=output)
-# model.compile(optimizer='adam', loss='mse')
 model.summary()
-
-
-# fit the model to the data
-# nb_epochs = 300
-# batch_size = 16
-# history = model.fit(X_train, train_truth, epochs=nb_epochs, batch_size=batch_size,
-#                     validation_split=0.2,).history
 
 
 def train(params_file="./keras_to_loihi_params", epochs=1, **kwargs):
@@ -166,7 +119,7 @@ def train(params_file="./keras_to_loihi_params", epochs=1, **kwargs):
             metrics={converter.outputs[output]: tf.keras.metrics.MeanSquaredError()},
         )
         sim.fit(
-            {converter.inputs[inp]: X_train},
+            {converter.inputs[inp]: train_data},
             {converter.outputs[output]: train_truth},
             epochs=epochs,
         )
@@ -179,8 +132,8 @@ def train(params_file="./keras_to_loihi_params", epochs=1, **kwargs):
 train(epochs=2, swap_activations={tf.nn.relu: nengo.RectifiedLinear()})
 
 # just to compile the model for now
-test_images = train_data
-test_labels = train_truth
+test_data = train_data
+test_truth = train_truth
 
 
 def run_network(
@@ -208,10 +161,10 @@ def run_network(
     with nengo_converter.net:
         probes = collections.OrderedDict([[L1_layer, nengo.Probe(nengo_converter.layers[L1])],
                                           [L2_layer, nengo.Probe(nengo_converter.layers[L2])],
-                                          [L3_layer, nengo.Probe(nengo_converter.layers[L3])],])
+                                          [L3_layer, nengo.Probe(nengo_converter.layers[L3])], ])
 
     # repeat inputs for some number of timesteps
-    tiled_test_images = np.tile(test_images[:n_test], (1, n_steps, 1))
+    tiled_test_data = np.tile(test_data[:n_test], (1, n_steps, 1))
 
     # set some options to speed up simulation
     with nengo_converter.net:
@@ -222,15 +175,11 @@ def run_network(
             nengo_converter.net, minibatch_size=1, progress_bar=False
     ) as nengo_sim:
         nengo_sim.load_params(params_file)
-        data = nengo_sim.predict({nengo_input: tiled_test_images})
+        data = nengo_sim.predict({nengo_input: tiled_test_data})
 
-    # compute accuracy on test data, using output of network on
-    # last timestep
+    # compute accuracy on test data, using output of network on last timestep
     test_predictions = np.argmax(data[nengo_output][:, -1], axis=-1)
-    print(
-        "Test accuracy: %.2f%%"
-        % (100 * np.mean(test_predictions == test_labels[:n_test, 0, 0]))
-    )
+    print("Test accuracy: %.2f%%" % (100 * np.mean(test_predictions == test_truth[:n_test, 0, 0])))
 
     # plot the results
     mean_rates = []
@@ -239,7 +188,7 @@ def run_network(
 
         plt.subplot(1, 2, 1)
         # plt.title("Input image")
-        # plt.imshow(test_images[i, 0].reshape((28, 28)), cmap="gray")
+        # plt.imshow(test_data[i, 0].reshape((28, 28)), cmap="gray")
         # plt.axis("off")
 
         n_layers = len(probes)
@@ -261,9 +210,7 @@ def run_network(
             rates = outputs.mean(axis=0)
             mean_rate = rates.mean()
             mean_rates_i.append(mean_rate)
-            print(
-                '"%s" mean firing rate (example %d): %0.1f' % (layer.name, i, mean_rate)
-            )
+            print('"%s" mean firing rate (example %d): %0.1f' % (layer.name, i, mean_rate))
 
             if is_spiking_type(activation):
                 outputs *= 0.001
@@ -296,20 +243,21 @@ def run_network(
 def is_spiking_type(neuron_type):
     return isinstance(neuron_type, (nengo.LIF, nengo.SpikingRectifiedLinear))
 
+
 # test the trained networks on test set
-mean_rates = run_network(activation=nengo.RectifiedLinear(), n_steps=10)
+mean_rates = run_network(activation=nengo.RectifiedLinear(), n_steps=10, )
+# plt.show()
+plt.close()
 
 # test the trained networks using spiking neurons
-run_network(
-    activation=nengo.SpikingRectifiedLinear(), scale_firing_rates=100, synapse=0.005,
-)
+run_network(activation=nengo.SpikingRectifiedLinear(), scale_firing_rates=100, synapse=0.005, )
+# plt.show()
+plt.close()
 
 # test the trained networks using spiking neurons
-run_network(
-    activation=nengo_loihi.neurons.LoihiSpikingRectifiedLinear(),
-    scale_firing_rates=100,
-    synapse=0.005,
-)
+run_network(activation=nengo_loihi.neurons.LoihiSpikingRectifiedLinear(), scale_firing_rates=100, synapse=0.005, )
+# plt.show()
+plt.close()
 
 
 def plot_activation(neurons, min, max, **kwargs):
@@ -326,10 +274,14 @@ def plot_activation(neurons, min, max, **kwargs):
 plt.figure(figsize=(10, 3))
 plot_activation(nengo.RectifiedLinear(), -100, 1000)
 plot_activation(nengo_loihi.neurons.LoihiSpikingRectifiedLinear(), -100, 1000)
+# plt.show()
+plt.close()
 
 plt.figure(figsize=(10, 3))
 plot_activation(nengo.LIF(), -4, 40)
 plot_activation(nengo_loihi.neurons.LoihiLIF(), -4, 40)
+# plt.show()
+plt.close()
 
 target_mean = 200
 scale_firing_rates = {
@@ -344,6 +296,8 @@ run_network(
     scale_firing_rates=scale_firing_rates,
     synapse=0.005,
 )
+# plt.show()
+plt.close()
 
 # train this network with normal ReLU neurons
 train(
@@ -360,6 +314,8 @@ run_network(
     params_file="./keras_to_loihi_loihineuron_params",
     synapse=0.005,
 )
+plt.show()
+# plt.close()
 
 pres_time = 0.03  # how long to present each input, in seconds
 n_test = 5  # how many images to test
@@ -377,8 +333,6 @@ net = nengo_converter.net
 nengo_input = nengo_converter.inputs[inp]
 nengo_output = nengo_converter.outputs[output]
 
-print("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX")
-
 # build network, load in trained weights, save to network
 with nengo_dl.Simulator(net) as nengo_sim:
     nengo_sim.load_params("keras_to_loihi_loihineuron_params")
@@ -386,24 +340,28 @@ with nengo_dl.Simulator(net) as nengo_sim:
 
 with net:
     nengo_input.output = nengo.processes.PresentInput(
-        test_images, presentation_time=pres_time
+        test_data, presentation_time=pres_time
     )
 
+# set off-chip layer
 with net:
-    nengo_loihi.add_params(net)  # allow on_chip to be set
-    net.config[nengo_converter.layers[L1].ensemble].on_chip = False
+    nengo_loihi.add_params(net)
+    net.config[nengo_converter.layers[to_spikes].ensemble].on_chip = False
 
+# set on-chip layers
 with net:
+    L1_shape = L1_layer.output_shape[1:]
+    net.config[nengo_converter.layers[L1].ensemble].block_shape = nengo_loihi.BlockShape((50,), L1_shape)
+
     L2_shape = L2_layer.output_shape[1:]
-    net.config[
-        nengo_converter.layers[L2].ensemble
-    ].block_shape = nengo_loihi.BlockShape((50,), L2_shape)
+    net.config[nengo_converter.layers[L2].ensemble].block_shape = nengo_loihi.BlockShape((50,), L2_shape)
 
     L3_shape = L3_layer.output_shape[1:]
-    net.config[
-        nengo_converter.layers[L3].ensemble
-    ].block_shape = nengo_loihi.BlockShape((50,), L3_shape)
+    net.config[nengo_converter.layers[L3].ensemble].block_shape = nengo_loihi.BlockShape((50,), L3_shape)
 
+print("Types of neurons used: ")
+for ensemble in nengo_converter.net.ensembles:
+    print(ensemble, ensemble.neuron_type)
 
 # build Nengo Loihi Simulator and run network
 with nengo_loihi.Simulator(net) as loihi_sim:
@@ -411,36 +369,20 @@ with nengo_loihi.Simulator(net) as loihi_sim:
 
     # get output (last timestep of each presentation period)
     pres_steps = int(round(pres_time / loihi_sim.dt))
-    output = loihi_sim.data[nengo_output][pres_steps - 1 :: pres_steps]
+    output = loihi_sim.data[nengo_output][pres_steps - 1:: pres_steps]
 
     # compute the Loihi accuracy
     loihi_predictions = np.argmax(output, axis=-1)
-    correct = 100 * np.mean(loihi_predictions == test_labels[:n_test, 0, 0])
+    correct = 100 * np.mean(loihi_predictions == test_truth[:n_test, 0, 0])
     print("Loihi accuracy: %.2f%%" % correct)
 
-# plot the neural activity of the convnet layers
 plt.figure(figsize=(12, 4))
-
 timesteps = loihi_sim.trange() / loihi_sim.dt
 
-# plot the presented MNIST digits
-plt.figure(figsize=(12, 4))
-plt.subplot(2, 1, 1)
-images = test_images.reshape(-1, 28, 28, 1)[:n_test]
-ni, nj, nc = images[0].shape
-allimage = np.zeros((ni, nj * n_test, nc), dtype=images.dtype)
-for i, image in enumerate(images[:n_test]):
-    allimage[:, i * nj : (i + 1) * nj] = image
-if allimage.shape[-1] == 1:
-    allimage = allimage[:, :, 0]
-plt.imshow(allimage, aspect="auto", interpolation="none", cmap="gray")
-plt.xticks([])
-plt.yticks([])
-
 # plot the network predictions
-plt.subplot(2, 1, 2)
 plt.plot(timesteps, loihi_sim.data[nengo_output])
 plt.legend(["%d" % i for i in range(10)], loc="lower left")
 plt.suptitle("Output predictions")
 plt.xlabel("Timestep")
 plt.ylabel("Probability")
+plt.show()

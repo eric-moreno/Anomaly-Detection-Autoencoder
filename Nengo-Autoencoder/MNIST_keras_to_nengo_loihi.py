@@ -8,7 +8,6 @@ import numpy as np
 import tensorflow as tf
 import nengo_loihi
 
-
 # ignore NengoDL warning about no GPU
 warnings.filterwarnings("ignore", message="No GPU", module="nengo_dl")
 
@@ -84,6 +83,7 @@ dense1 = tf.keras.layers.Dense(units=10, name="dense1")(dense0)
 model = tf.keras.Model(inputs=inp, outputs=dense1)
 model.summary()
 
+
 def train(params_file="./keras_to_loihi_params", epochs=1, **kwargs):
     converter = nengo_dl.Converter(model, **kwargs)
 
@@ -112,14 +112,15 @@ train(
     epochs=2, swap_activations={tf.nn.relu: nengo.RectifiedLinear()},
 )
 
+
 def run_network(
-    activation,
-    params_file="./keras_to_loihi_params",
-    n_steps=30,
-    scale_firing_rates=1,
-    synapse=None,
-    n_test=100,
-    n_plots=2,
+        activation,
+        params_file="./keras_to_loihi_params",
+        n_steps=30,
+        scale_firing_rates=1,
+        synapse=None,
+        n_test=100,
+        n_plots=2,
 ):
     # convert the keras model to a nengo network
     nengo_converter = nengo_dl.Converter(
@@ -153,7 +154,7 @@ def run_network(
 
     # build network, load in trained weights, run inference on test images
     with nengo_dl.Simulator(
-        nengo_converter.net, minibatch_size=20, progress_bar=False
+            nengo_converter.net, minibatch_size=20, progress_bar=False
     ) as nengo_sim:
         nengo_sim.load_params(params_file)
         data = nengo_sim.predict({nengo_input: tiled_test_images})
@@ -230,6 +231,7 @@ def run_network(
 def is_spiking_type(neuron_type):
     return isinstance(neuron_type, (nengo.LIF, nengo.SpikingRectifiedLinear))
 
+
 # test the trained networks on test set
 mean_rates = run_network(activation=nengo.RectifiedLinear(), n_steps=10)
 
@@ -244,6 +246,7 @@ run_network(
     scale_firing_rates=100,
     synapse=0.005,
 )
+
 
 def plot_activation(neurons, min, max, **kwargs):
     x = np.arange(min, max, 0.001)
@@ -347,7 +350,7 @@ with nengo_loihi.Simulator(net) as loihi_sim:
 
     # get output (last timestep of each presentation period)
     pres_steps = int(round(pres_time / loihi_sim.dt))
-    output = loihi_sim.data[nengo_output][pres_steps - 1 :: pres_steps]
+    output = loihi_sim.data[nengo_output][pres_steps - 1:: pres_steps]
 
     # compute the Loihi accuracy
     loihi_predictions = np.argmax(output, axis=-1)
@@ -366,7 +369,7 @@ images = test_images.reshape(-1, 28, 28, 1)[:n_test]
 ni, nj, nc = images[0].shape
 allimage = np.zeros((ni, nj * n_test, nc), dtype=images.dtype)
 for i, image in enumerate(images[:n_test]):
-    allimage[:, i * nj : (i + 1) * nj] = image
+    allimage[:, i * nj: (i + 1) * nj] = image
 if allimage.shape[-1] == 1:
     allimage = allimage[:, :, 0]
 plt.imshow(allimage, aspect="auto", interpolation="none", cmap="gray")
