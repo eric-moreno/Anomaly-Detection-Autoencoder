@@ -42,8 +42,9 @@ def main(args):
     os.system('mkdir -p %s'%outdir)
 
     # Load train 
-    load = h5.File('data/default_simulated.hdf','r')
-    datapoints = 5000
+    load = h5.File('../../dataset/default_simulated.hdf', 'r')
+    
+    datapoints = 4000
     noise_samples = load['noise_samples']['%s_strain'%(str(detector).lower())][:datapoints]
     injection_samples = load['injection_samples']['%s_strain'%(str(detector).lower())][:datapoints]
     train_data = np.concatenate((noise_samples, injection_samples))
@@ -61,7 +62,7 @@ def main(args):
     if bool(int(filtered)):
         print('Filtering data with whitening and bandpass')
         print('Sample Frequency: %s Hz'%(freq))
-        x = [filters(sample, freq)[7168:15360] for sample in train_data]
+        x = [filters(sample, freq)[10240:12288] for sample in train_data]
         print('Done!')
     #7168:15360
     # Normalize the data
