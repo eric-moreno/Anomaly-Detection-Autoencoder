@@ -69,6 +69,12 @@ def filters(array, sample_frequency):
     return bp_data.value
 
 
+def print_neurons_type(converter_nengo):
+    print("Types of neurons used: ")
+    for ensemble in converter_nengo.net.ensembles:
+        print(ensemble, ensemble.neuron_type)
+
+
 # Ignore NengoDL warning about no GPU
 warnings.filterwarnings("ignore", message="No GPU", module="nengo_dl")
 
@@ -206,6 +212,8 @@ def run_network(
         swap_activations={tf.nn.relu: activation},
         synapse=synapse,
     )
+
+    print_neurons_type(nengo_converter)
 
     # get input/output objects
     nengo_input = nengo_converter.inputs[inp]
@@ -423,9 +431,8 @@ with net:
     L3_shape = L3_layer.output_shape[1:]
     net.config[nengo_converter.layers[L3].ensemble].block_shape = nengo_loihi.BlockShape((50,), L3_shape)
 
-print("Types of neurons used: ")
-for ensemble in nengo_converter.net.ensembles:
-    print(ensemble, ensemble.neuron_type)
+print_neurons_type(nengo_converter)
+
 
 # build Nengo Loihi Simulator and run network
 with nengo_loihi.Simulator(net) as loihi_sim:

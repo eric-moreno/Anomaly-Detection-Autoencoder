@@ -17,7 +17,7 @@ from sklearn.utils.multiclass import unique_labels
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 
-from keras.layers import Input, Dense, Reshape, MaxPooling1D, Conv1D, Flatten
+from keras.layers import Input, Dense, Reshape, MaxPooling1D, Conv1D, Flatten, AveragePooling1D
 from keras.models import Model
 
 import nengo_loihi
@@ -67,6 +67,12 @@ def filters(array, sample_frequency):
     white_data = strain.whiten(fftlength=4, fduration=4)
     bp_data = white_data.bandpass(50, 250)
     return bp_data.value
+
+
+def print_neurons_type(converter_nengo):
+    print("Types of neurons used: ")
+    for ensemble in converter_nengo.net.ensembles:
+        print(ensemble, ensemble.neuron_type)
 
 
 # Ignore NengoDL warning about no GPU
@@ -119,11 +125,11 @@ class_names = np.array(['noise', 'GW'], dtype=str)
 
 
 # With LIGO simulated data, the sample isn't pre-filtered so need to filter again. Real data is not filtered yet.
-# if bool(int(filtered)):
-#     print('Filtering data with whitening and bandpass')
-#     print('Sample Frequency: %s Hz' % freq)
-#     x = [filters(sample, freq)[7168:15360] for sample in train_data]
-#     print('Done!')
+if bool(int(filtered)):
+    print('Filtering data with whitening and bandpass')
+    print('Sample Frequency: %s Hz' % freq)
+    x = [filters(sample, freq)[7168:15360] for sample in train_data]
+    print('Done!')
 
 # Normalize the data
 # scaler = MinMaxScaler()
@@ -147,52 +153,52 @@ inp = Input(shape=(train_data.shape[2],), name="input")
 x = Reshape((train_data.shape[2], 1))(inp)
 
 # transform input signal to spikes using trainable off-chip layer
-to_spikes_layer = Conv1D(16, 4, activation="relu", use_bias=False)
+to_spikes_layer = Conv1D(16, 4, activation=tf.nn.relu, use_bias=False)
 to_spikes = to_spikes_layer(x)
 
 # on-chip layers
-L1_layer = Conv1D(16, 4, activation="relu", dilation_rate=1, use_bias=False)
+L1_layer = Conv1D(16, 4, activation=tf.nn.relu, use_bias=False)
 L1 = L1_layer(to_spikes)
 
-L2_layer = MaxPooling1D(2, strides=4)
-L2 = L2_layer(L1)
+x = MaxPooling1D(2, strides=4)(L1)
 
-L3_layer = Conv1D(32, 4, activation="relu", use_bias=False)
-L3 = L3_layer(L2)
+L2_layer = Conv1D(32, 4, activation=tf.nn.relu, use_bias=False)
+L2 = L2_layer(x)
 
-L4_layer = MaxPooling1D(2, strides=4)
-L4 = L4_layer(L3)
+x = MaxPooling1D(2, strides=4)(L2)
 
-L5_layer = Conv1D(64, 4, activation="relu", use_bias=False)
-L5 = L5_layer(L4)
+L3_layer = Conv1D(64, 4, activation=tf.nn.relu, use_bias=False)
+L3 = L3_layer(x)
 
-L6_layer = MaxPooling1D(4, strides=4)
+x = MaxPooling1D(4, strides=4)(L3)
+
+L4_layer = Conv1D(128, 8, activation=tf.nn.relu, use_bias=False)
+L4 = L4_layer(x)
+
+x = MaxPooling1D(4, strides=4)(L4)
+x = Flatten()(x)
+
+L5_layer = Dense(128, activation=tf.nn.relu, use_bias=False)
+L5 = L5_layer(x)
+
+L6_layer = Dense(64, activation=tf.nn.relu, use_bias=False)
 L6 = L6_layer(L5)
-
-L7_layer = Conv1D(128, 8, activation="relu", use_bias=False)
-L7 = L7_layer(L6)
-
-L8_layer = MaxPooling1D(4, strides=4)
-L8 = L8_layer(L7)
-
-x = Flatten()(L8)
-
-L9_layer = Dense(128, activation='relu', use_bias=False)
-L9 = L9_layer(x)
-
-L10_layer = Dense(64, activation='relu', use_bias=False)
-L10 = L10_layer(L9)
 
 # since this final output layer has no activation function,
 # it will be converted to a `nengo.Node` and run off-chip
-output = Dense(units=2, name="output")(L10)
+output = Dense(units=2, name="output")(L6)
 
 model = Model(inputs=inp, outputs=output)
+model.compile(optimizer='adam', loss='mse')
 model.summary()
+# history = model.fit(train_data, train_truth, epochs=1, batch_size=16,
+#                         validation_split=0.2,).history
 
 
 def train(params_file="./keras_to_loihi_params", epochs=1, **kwargs):
-    converter = nengo_dl.Converter(model, **kwargs)
+    converter = nengo_dl.Converter(model, max_to_avg_pool=True, **kwargs)
+
+    print_neurons_type(converter)
 
     with nengo_dl.Simulator(converter.net, seed=0, minibatch_size=100) as sim:
         sim.compile(
@@ -211,7 +217,7 @@ def train(params_file="./keras_to_loihi_params", epochs=1, **kwargs):
 
 
 # train this network with normal ReLU neurons
-train(epochs=2, swap_activations={tf.nn.relu: nengo.RectifiedLinear()})
+train(epochs=1, swap_activations={tf.nn.relu: nengo.RectifiedLinear()})
 
 
 def run_network(
@@ -230,7 +236,10 @@ def run_network(
         scale_firing_rates=scale_firing_rates,
         swap_activations={tf.nn.relu: activation},
         synapse=synapse,
+        max_to_avg_pool=True
     )
+
+    print_neurons_type(nengo_converter)
 
     # get input/output objects
     nengo_input = nengo_converter.inputs[inp]
@@ -243,11 +252,7 @@ def run_network(
                                           [L3_layer, nengo.Probe(nengo_converter.layers[L3])],
                                           [L4_layer, nengo.Probe(nengo_converter.layers[L4])],
                                           [L5_layer, nengo.Probe(nengo_converter.layers[L5])],
-                                          [L6_layer, nengo.Probe(nengo_converter.layers[L6])],
-                                          [L7_layer, nengo.Probe(nengo_converter.layers[L7])],
-                                          [L8_layer, nengo.Probe(nengo_converter.layers[L8])],
-                                          [L9_layer, nengo.Probe(nengo_converter.layers[L9])],
-                                          [L10_layer, nengo.Probe(nengo_converter.layers[L10])],])
+                                          [L6_layer, nengo.Probe(nengo_converter.layers[L6])],])
 
     # repeat inputs for some number of timesteps
     tiled_test_data = np.tile(test_data[:n_test], (1, n_steps, 1))
@@ -387,10 +392,6 @@ scale_firing_rates = {
     L4_layer: target_mean / mean_rates[3],
     L5_layer: target_mean / mean_rates[4],
     L6_layer: target_mean / mean_rates[5],
-    L7_layer: target_mean / mean_rates[6],
-    L8_layer: target_mean / mean_rates[7],
-    L9_layer: target_mean / mean_rates[8],
-    L10_layer: target_mean / mean_rates[9],
 }
 
 # test the trained networks using spiking neurons
@@ -405,7 +406,7 @@ plot_no += 1
 # train this network with normal ReLU neurons
 train(
     params_file="./keras_to_loihi_loihineuron_params",
-    epochs=2,
+    epochs=1,
     swap_activations={tf.nn.relu: nengo_loihi.neurons.LoihiSpikingRectifiedLinear()},
     scale_firing_rates=100,
 )
@@ -421,7 +422,7 @@ plt.savefig(outdir + f'/{plot_no}.jpg')
 plot_no += 1
 
 pres_time = 0.03  # how long to present each input, in seconds
-n_test = 100  # how many samples to test
+n_test = 1  # how many samples to test
 
 # convert the keras model to a nengo network
 nengo_converter = nengo_dl.Converter(
@@ -429,6 +430,7 @@ nengo_converter = nengo_dl.Converter(
     scale_firing_rates=400,
     swap_activations={tf.nn.relu: nengo_loihi.neurons.LoihiSpikingRectifiedLinear()},
     synapse=0.005,
+    max_to_avg_pool=True,
 )
 net = nengo_converter.net
 
@@ -454,16 +456,16 @@ with net:
 # set on-chip layers
 with net:
     L1_shape = L1_layer.output_shape[1:]
-    net.config[nengo_converter.layers[L1].ensemble].block_shape = nengo_loihi.BlockShape((50,), L1_shape)
+    net.config[nengo_converter.layers[L1].ensemble].block_shape = nengo_loihi.BlockShape((256, 4,), L1_shape)
 
     L2_shape = L2_layer.output_shape[1:]
-    net.config[nengo_converter.layers[L2].ensemble].block_shape = nengo_loihi.BlockShape((50,), L2_shape)
+    net.config[nengo_converter.layers[L2].ensemble].block_shape = nengo_loihi.BlockShape((64, 16,), L2_shape)
 
     L3_shape = L3_layer.output_shape[1:]
-    net.config[nengo_converter.layers[L3].ensemble].block_shape = nengo_loihi.BlockShape((50,), L3_shape)
+    net.config[nengo_converter.layers[L3].ensemble].block_shape = nengo_loihi.BlockShape((32, 32,), L3_shape)
 
     L4_shape = L4_layer.output_shape[1:]
-    net.config[nengo_converter.layers[L4].ensemble].block_shape = nengo_loihi.BlockShape((50,), L4_shape)
+    net.config[nengo_converter.layers[L4].ensemble].block_shape = nengo_loihi.BlockShape((16, 64,), L4_shape)
 
     L5_shape = L5_layer.output_shape[1:]
     net.config[nengo_converter.layers[L5].ensemble].block_shape = nengo_loihi.BlockShape((50,), L5_shape)
@@ -471,21 +473,8 @@ with net:
     L6_shape = L6_layer.output_shape[1:]
     net.config[nengo_converter.layers[L6].ensemble].block_shape = nengo_loihi.BlockShape((50,), L6_shape)
 
-    L7_shape = L7_layer.output_shape[1:]
-    net.config[nengo_converter.layers[L7].ensemble].block_shape = nengo_loihi.BlockShape((50,), L7_shape)
+print_neurons_type(nengo_converter)
 
-    L8_shape = L8_layer.output_shape[1:]
-    net.config[nengo_converter.layers[L8].ensemble].block_shape = nengo_loihi.BlockShape((50,), L8_shape)
-
-    L9_shape = L9_layer.output_shape[1:]
-    net.config[nengo_converter.layers[L9].ensemble].block_shape = nengo_loihi.BlockShape((50,), L9_shape)
-
-    L10_shape = L10_layer.output_shape[1:]
-    net.config[nengo_converter.layers[L10].ensemble].block_shape = nengo_loihi.BlockShape((50,), L10_shape)
-
-print("Types of neurons used: ")
-for ensemble in nengo_converter.net.ensembles:
-    print(ensemble, ensemble.neuron_type)
 
 # build Nengo Loihi Simulator and run network
 with nengo_loihi.Simulator(net) as loihi_sim:
