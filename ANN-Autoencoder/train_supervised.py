@@ -40,16 +40,27 @@ def main(args):
     freq = args.freq
     filtered = args.filtered
     os.system('mkdir -p %s'%outdir)
-
+    '''
     # Load train 
-    load = h5.File('../../dataset/default_simulated.hdf', 'r')
+    load_1 = h5.File('../../dataset/default_simulated_big_1.hdf', 'r')
+    load_2 = h5.File('../../dataset/default_simulated_big_2.hdf', 'r')
+    load_3 = h5.File('../../dataset/default_simulated_big_3.hdf', 'r')
     
-    datapoints = 4000
-    noise_samples = load['noise_samples']['%s_strain'%(str(detector).lower())][:datapoints]
-    injection_samples = load['injection_samples']['%s_strain'%(str(detector).lower())][:datapoints]
-    train_data = np.concatenate((noise_samples, injection_samples))
-    train_truth = np.concatenate((np.zeros(datapoints), np.ones(datapoints)))
-    train_data, train_truth = shuffle(train_data, train_truth)
+    datapoints = 40000
+    noise_samples_1 = load_1['noise_samples']['%s_strain'%(str(detector).lower())][:datapoints]
+    injection_samples_1 = load_1['injection_samples']['%s_strain'%(str(detector).lower())][:datapoints]
+    noise_samples_2 = load_2['noise_samples']['%s_strain'%(str(detector).lower())][:datapoints]
+    injection_samples_2 = load_2['injection_samples']['%s_strain'%(str(detector).lower())][:datapoints]
+    #noise_samples_3 = load_3['noise_samples']['%s_strain'%(str(detector).lower())][:int(datapoints)]
+    #injection_samples_3 = load_3['injection_samples']['%s_strain'%(str(detector).lower())][:int(datapoints)]
+    #del load_1, load_2, load_3
+    #train_data = np.concatenate((noise_samples_1, noise_samples_2 ,noise_samples_3, injection_samples_1, 
+    #                             injection_samples_2, injection_samples_3))
+    train_data = np.concatenate((noise_samples_1, noise_samples_2, injection_samples_1, injection_samples_2))
+    train_truth = np.concatenate((np.zeros(int(datapoints*2)), np.ones(int(datapoints*2))))
+    #train_data, train_truth = shuffle(train_data, train_truth)
+
+    #del noise_samples_1, noise_samples_2 ,noise_samples_3, injection_samples_1, injection_samples_2, injection_samples_3
     
     # Definining frequency in Hz instead of KHz
     if int(freq) == 2: 
@@ -64,19 +75,24 @@ def main(args):
         print('Sample Frequency: %s Hz'%(freq))
         x = [filters(sample, freq)[10240:12288] for sample in train_data]
         print('Done!')
-    #7168:15360
     # Normalize the data
     scaler = MinMaxScaler()
     X_train = scaler.fit_transform(x)
     scaler_filename = "%s/scaler_data_%s"%(outdir, detector)
     joblib.dump(scaler, scaler_filename)
     
-
+    np.save('train_preprocessed_160k', X_train)
+    sys.exit()
+    '''
+    datapoints = 40000
+    train_truth = np.concatenate((np.ones(int(datapoints*2)), np.zeros(int(datapoints*2))))
+    
+    X_train = np.load('train_preprocessed_160k.npy')
     print("Training data shape:", X_train.shape)
-
+    X_train, train_truth = shuffle(X_train, train_truth)
     #Define model 
-    model = autoencoder_ConvDNN(X_train) 
-    model.compile(optimizer='adam', loss='mse')
+    model = autoencoder_DNN(X_train) 
+    model.compile(optimizer='adam', loss='mse', metrics=['accuracy'])
     model.summary()
 
     # fit the model to the data

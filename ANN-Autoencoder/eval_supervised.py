@@ -33,8 +33,12 @@ def main(args):
     timesteps = int(args.timesteps)
     os.system('mkdir -p %s'%outdir)
     
-    load = h5.File('../../dataset/default_simulated.hdf', 'r')
+    load = h5.File('../../dataset/default_simulated_big_3.hdf', 'r')
+    n_test_events = 40000
+    SNR = load['injection_parameters']['%s_snr'%(str(detector).lower())][:][-n_test_events:]
+    test_truth = np.concatenate((np.zeros(n_test_events), np.ones(n_test_events)))
     
+    '''
     if int(freq) == 2: 
         freq = 2048
     elif int(freq) == 4: 
@@ -44,11 +48,12 @@ def main(args):
         print('WARNING: not a supported sampling frequency for simulated data')
         print('Sampling Frequency: %s'%(freq))
     
-    n_test_events = 1000
+    n_test_events = 40000
     noise_samples = load['noise_samples']['%s_strain'%(str(detector).lower())][:][-n_test_events:]
     injection_samples = load['injection_samples']['%s_strain'%(str(detector).lower())][:][-n_test_events:]
-    test_data = np.concatenate((noise_samples, injection_samples))
-    test_truth = np.concatenate((np.zeros(n_test_events), np.ones(n_test_events)))
+    SNR = load['injection_parameters']['%s_snr'%(str(detector).lower())][:][-n_test_events:]
+    test_data = np.concatenate((injection_samples, noise_samples))
+    test_truth = np.concatenate((np.ones(n_test_events), np.zeros(n_test_events)))
     
     if bool(int(filtered)):
         print('filtering data with whitening and bandpass')
@@ -60,18 +65,27 @@ def main(args):
     scaler = joblib.load(scaler_filename) 
     X_test = scaler.transform(test_data)
     
+    np.save('test_preprocessed_80k', X_test)
+    sys.exit()
+    '''
+    
+    X_test = np.load('test_preprocessed_80k.npy')
     print("Testing data shape:", X_test.shape)
     
+    # Evaluate model
     model = load_model('%s/best_model.hdf5'%(outdir))
     X_pred_test = model.predict(X_test)
     
+    
     directory_list = [outdir]
     names = ['CNN+DNN']
+    predictions = [X_pred_test]
     
+    # ROC Curve Plot
     plt.figure()
-    for name, directory in zip(names, directory_list): 
+    for name, directory, pred in zip(names, directory_list, predictions): 
         print('Determining performance for: %s'%(name))
-        fpr, tpr, thresholds = roc_curve(test_truth, X_pred_test)
+        fpr, tpr, thresholds = roc_curve(test_truth, pred)
         plt.plot(fpr, tpr, lw=2, label='%s (auc = %0.2f)'%(name, auc(fpr, tpr)))
         print('Done!')
     plt.plot([0, 1], [0, 1], lw=2, linestyle='--')
@@ -83,6 +97,28 @@ def main(args):
     plt.title('LIGO Supervised GW-Detection')
     plt.legend(loc="lower right")
     plt.savefig('%s/ROC_curve_log.jpg'%(outdir))
+    
+    
+    # SNR vs Efficiency plot
+    plt.figure()
+    bins = 30
+    SNR_max = max(SNR)
+    SNR_min = min(SNR)
+    SNR_bins = [[] for i in range(int(bins))]
+    for name, directory, pred in zip(names, directory_list, predictions): 
+        for i in range(int(len(pred)/2)): 
+            if abs(pred[i] - test_truth[i]) <= 0.5:
+                SNR_bins[int((SNR[i] - SNR_min)/((SNR_max-SNR_min)/bins)) - 1].append(1)
+            else: 
+                SNR_bins[int((SNR[i] - SNR_min)/((SNR_max-SNR_min)/bins)) - 1].append(0)
+                
+    
+            
+    x = [sum(i)/len(i) for i in SNR_bins[:-10]]
+    plt.plot(x)
+    plt.xlabel('SNR')
+    plt.ylabel('True Positive Rate')
+    plt.savefig('%s/SNR_efficiency.jpg'%(outdir))
     
 if __name__ == "__main__":
     """ This is executed when run from the command line """
