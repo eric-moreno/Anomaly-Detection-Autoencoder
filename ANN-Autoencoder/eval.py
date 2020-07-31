@@ -28,6 +28,7 @@ def filters(array, sample_frequency):
 def TPR_FPR_arrays(noise_array, injection_array, model_outdir, steps, num_entries=400): 
     # load the autoencoder network model
     model = load_model('%s/best_model.hdf5'%(model_outdir))
+    '''
     x = []
     for event in range(len(noise_array)): 
         if noise_array[event].shape[0]%steps != 0: 
@@ -39,13 +40,17 @@ def TPR_FPR_arrays(noise_array, injection_array, model_outdir, steps, num_entrie
         if injection_array[event].shape[0]%steps != 0: 
             x.append(injection_array[event][:-1*int(injection_array[event].shape[0]%steps)])
     injection_array = np.array(x).reshape(-1, steps, 1)
+    '''
+    
+    noise_array = noise_array.reshape(-1, steps, 1)
+    injection_array = injection_array.reshape(-1, steps, 1)
     
     ### Evaluating on training data to find threshold ### 
     print('Evaluating Model on train data. This make take a while...')
     X_pred_noise = model.predict(noise_array)
     print('Finished evaluating model on train data')
     
-    n_noise_events = 5000
+    n_noise_events = 40000
     # Determine thresholds for FPR quantiles
     loss_fn = MeanSquaredError(reduction='none')
     losses = loss_fn(noise_array, X_pred_noise).eval(session=tf.compat.v1.Session())
@@ -60,7 +65,7 @@ def TPR_FPR_arrays(noise_array, injection_array, model_outdir, steps, num_entrie
     X_pred_injection = model.predict(injection_array)
     print('Finished evaluating model on test data')
     
-    n_injection_events = 5000
+    n_injection_events = 40000
     losses = loss_fn(injection_array, X_pred_injection).eval(session=tf.compat.v1.Session())
     averaged_losses = np.mean(losses, axis=1).reshape(n_injection_events, -1)
     
@@ -97,7 +102,7 @@ def main(args):
         freq = 4096
     else:
         return print(f'Given frequency {freq}kHz is not supported. Correct values are 2 or 4kHz.')
-
+    '''
     n_noise_events = 5000
     noise_samples = load['noise_samples']['%s_strain'%(str(detector).lower())][:][-n_noise_events:]
 
@@ -128,10 +133,12 @@ def main(args):
     X_test = scaler.transform(x_injection)
 
     print("Testing data shape:", X_test.shape)
-    
+    '''
+    X_test = np.load('test_preprocessed_80k.npy')[:40000]
+    X_train = np.load('test_preprocessed_80k.npy')[40000:]
     directory_list = [outdir]
-    names = ['LSTM Autoencoder']
-    timesteps = [50, 50, 100, 108, 108]
+    names = ['DNN Autoencoder']
+    timesteps = [timesteps]
     FPR_set = []
     TPR_set = []
     

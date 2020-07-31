@@ -10,10 +10,9 @@ import h5py as h5
 from sklearn.preprocessing import MinMaxScaler
 from gwpy.timeseries import TimeSeries
 from keras.callbacks import EarlyStopping, ModelCheckpoint
-from model import autoencoder_LSTM, autoencoder_ConvLSTM, autoencoder_ConvDNN, autoencoder_DNN, autoencoder_Conv
+from model import autoencoder_LSTM, autoencoder_ConvLSTM, autoencoder_ConvDNN, autoencoder_DNN, autoencoder_Conv, autoencoder_Conv2
 
 sns.set(color_codes=True)
-
 
 def filters(array, sample_frequency):
     """ Apply preprocessing such as whitening and bandpass """
@@ -54,7 +53,7 @@ def main(args):
         freq = 4096
     else:
         return print(f'Given frequency {freq}kHz is not supported. Correct values are 2 or 4kHz.')
-
+    '''
     noise_samples = load['noise_samples']['%s_strain' % (str(detector).lower())][:][:45000]
 
     # With LIGO simulated data, the sample isn't pre-filtered so need to filter again.
@@ -70,17 +69,20 @@ def main(args):
     X_train = scaler.fit_transform(x)
     scaler_filename = f"{outdir}/scaler_data_{detector}"
     joblib.dump(scaler, scaler_filename)
-
+    '''
+    X_train = np.load('train_preprocessed_160k.npy')[:80000]
     # Data augmentation needed if not enough data
     # X_train = augmentation(X_train, timesteps)
 
     # Trim dataset to be batch-friendly and reshape into timestep format
+    '''
     x = []
     for event in range(len(X_train)):
         if X_train[event].shape[0] % timesteps != 0:
             x.append(X_train[event][:-1 * int(X_train[event].shape[0] % timesteps)])
     X_train = np.array(x)
-
+    '''
+    
     # Reshape inputs for LSTM [samples, timesteps, features]
     X_train = X_train.reshape(-1, timesteps, 1)
     print("Training data shape:", X_train.shape)
