@@ -17,7 +17,7 @@ from sklearn.utils.multiclass import unique_labels
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 
-from keras.layers import Input, Dense, Reshape, MaxPooling1D, Conv1D, Flatten, AveragePooling1D
+from keras.layers import Input, Dense, Reshape, MaxPooling2D, Conv2D, Flatten
 from keras.models import Model
 
 import nengo_loihi
@@ -150,33 +150,26 @@ print("Test labels data shape:", test_truth.shape)
 # Define the model
 inp = Input(shape=(train_data.shape[2],), name="input")
 
-x = Reshape((train_data.shape[2], 1))(inp)
+x = Reshape((train_data.shape[2], 1, 1))(inp)
 
 # transform input signal to spikes using trainable off-chip layer
-to_spikes_layer = Conv1D(16, 4, activation=tf.nn.relu, use_bias=False)
+to_spikes_layer = Conv2D(16, (4, 1), activation=tf.nn.relu, use_bias=False)
 to_spikes = to_spikes_layer(x)
 
 # on-chip layers
-L1_layer = Conv1D(16, 4, activation=tf.nn.relu, use_bias=False)
+L1_layer = Conv2D(16, (4, 1), strides=2, activation=tf.nn.relu, use_bias=False)
 L1 = L1_layer(to_spikes)
 
-x = MaxPooling1D(2, strides=4)(L1)
+L2_layer = Conv2D(32, (4, 1), strides=2, activation=tf.nn.relu, use_bias=False)
+L2 = L2_layer(L1)
 
-L2_layer = Conv1D(32, 4, activation=tf.nn.relu, use_bias=False)
-L2 = L2_layer(x)
+L3_layer = Conv2D(64, (4, 1), strides=2, activation=tf.nn.relu, use_bias=False)
+L3 = L3_layer(L2)
 
-x = MaxPooling1D(2, strides=4)(L2)
+L4_layer = Conv2D(128, (8, 1), strides=2, activation=tf.nn.relu, use_bias=False)
+L4 = L4_layer(L3)
 
-L3_layer = Conv1D(64, 4, activation=tf.nn.relu, use_bias=False)
-L3 = L3_layer(x)
-
-x = MaxPooling1D(4, strides=4)(L3)
-
-L4_layer = Conv1D(128, 8, activation=tf.nn.relu, use_bias=False)
-L4 = L4_layer(x)
-
-x = MaxPooling1D(4, strides=4)(L4)
-x = Flatten()(x)
+x = Flatten()(L4)
 
 L5_layer = Dense(128, activation=tf.nn.relu, use_bias=False)
 L5 = L5_layer(x)
@@ -456,16 +449,16 @@ with net:
 # set on-chip layers
 with net:
     L1_shape = L1_layer.output_shape[1:]
-    net.config[nengo_converter.layers[L1].ensemble].block_shape = nengo_loihi.BlockShape((256, 4,), L1_shape)
+    net.config[nengo_converter.layers[L1].ensemble].block_shape = nengo_loihi.BlockShape((16, 16, 4), L1_shape)
 
     L2_shape = L2_layer.output_shape[1:]
-    net.config[nengo_converter.layers[L2].ensemble].block_shape = nengo_loihi.BlockShape((64, 16,), L2_shape)
+    net.config[nengo_converter.layers[L2].ensemble].block_shape = nengo_loihi.BlockShape((8, 8, 16), L2_shape)
 
     L3_shape = L3_layer.output_shape[1:]
-    net.config[nengo_converter.layers[L3].ensemble].block_shape = nengo_loihi.BlockShape((32, 32,), L3_shape)
+    net.config[nengo_converter.layers[L3].ensemble].block_shape = nengo_loihi.BlockShape((4, 4, 32), L3_shape)
 
     L4_shape = L4_layer.output_shape[1:]
-    net.config[nengo_converter.layers[L4].ensemble].block_shape = nengo_loihi.BlockShape((16, 64,), L4_shape)
+    net.config[nengo_converter.layers[L4].ensemble].block_shape = nengo_loihi.BlockShape((2, 2, 64), L4_shape)
 
     L5_shape = L5_layer.output_shape[1:]
     net.config[nengo_converter.layers[L5].ensemble].block_shape = nengo_loihi.BlockShape((50,), L5_shape)
@@ -477,7 +470,7 @@ print_neurons_type(nengo_converter)
 
 
 # build Nengo Loihi Simulator and run network
-with nengo_loihi.Simulator(net) as loihi_sim:
+with nengo_loihi.Simulator(net, remove_passthrough=False) as loihi_sim:
     loihi_sim.run(n_test * pres_time)
 
     # get output (last timestep of each presentation period)
