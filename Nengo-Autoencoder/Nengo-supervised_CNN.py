@@ -12,7 +12,7 @@ import tensorflow as tf
 import h5py as h5
 import joblib
 from gwpy.timeseries import TimeSeries
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, roc_curve, auc, accuracy_score
 from sklearn.utils.multiclass import unique_labels
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
@@ -266,10 +266,24 @@ def run_network(
     test_predictions = np.argmax(data[nengo_output][:, -1], axis=-1)
     correct = test_truth[:n_test, 0, 0]
     print("Test accuracy: %.2f%%" % (100 * np.mean(test_predictions == correct)))
-
+    
     predicted = np.array(test_predictions, dtype=int)
     correct = np.array(correct, dtype=int)
-
+    
+    plt.figure()
+    fpr, tpr, thresholds = roc_curve(correct, predicted)
+    plt.plot(fpr, tpr, lw=2, label='%s (auc = %0.2f)'%('Nengo', auc(fpr, tpr)))
+    #plt.plot([0, 0], [1, 1], lw=2, linestyle='--')
+    plt.xlim([1e-4, 1])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.xscale('log')
+    plt.title('LIGO Supervised GW-Detection')
+    plt.legend(loc="lower right")
+    plt.savefig('%s/ROC_curve_log_1.jpg'%(outdir))
+    
+    
     # Plot normalized confusion matrix
     plot_confusion_matrix(correct, predicted, classes=class_names, normalize=True,
                           title='Normalized confusion matrix')
@@ -486,9 +500,22 @@ with nengo_loihi.Simulator(net, remove_passthrough=False) as loihi_sim:
 
     predicted = np.array(loihi_predictions, dtype=int)
     correct = np.array(correct, dtype=int)
-
+    
     print("Predicted labels: ", predicted)
     print("Correct labels: ", correct)
+    
+    plt.figure()
+    fpr, tpr, thresholds = roc_curve(correct, predicted)
+    plt.plot(fpr, tpr, lw=2, label='%s (auc = %0.2f)'%('Nengo Loihi', auc(fpr, tpr)))
+    #plt.plot([0, 1], [0, 1], lw=2, linestyle='--')
+    plt.xlim([1e-4, 1])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.xscale('log')
+    plt.title('LIGO Supervised GW-Detection')
+    plt.legend(loc="lower right")
+    plt.savefig('%s/ROC_curve_log_2.jpg'%(outdir))
 
 plt.figure(figsize=(12, 4))
 timesteps = loihi_sim.trange() / loihi_sim.dt
