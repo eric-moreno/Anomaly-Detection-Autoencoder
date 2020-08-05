@@ -65,7 +65,8 @@ def main(args):
     if bool(int(filtered)):
         print('Filtering data with whitening and bandpass')
         print('Sample Frequency: %s Hz'%(freq))
-        x = [filters(sample, freq)[10240:12288] for sample in data]
+        #randomly distributes GW between (0.2, 0.8) seconds into the event
+        x = [filters(sample, freq)[index:index+2048] for sample, index in zip(data, np.random.randint(9625,10854, size=len(data)))]
         print('Done!')
     # Normalize the data
     scaler = MinMaxScaler()
@@ -91,7 +92,7 @@ if __name__ == "__main__":
                         action='store', dest='freq', default=2)
     parser.add_argument("--filtered", help="Apply LIGO's bandpass and whitening filters",
                         action='store', dest='filtered', default=1)
-    parser.add_argument("--eventwidth", help="After processing, how long event a single event should be.",
+    parser.add_argument("--eventwidth", help="After processing, how long event a single event should be in seconds",
                         action='store', dest='timesteps', default=1)
 
     args = parser.parse_args()
