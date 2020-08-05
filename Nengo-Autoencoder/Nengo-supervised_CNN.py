@@ -183,7 +183,7 @@ L6 = L6_layer(L5)
 output = Dense(units=2, name="output")(L6)
 
 model = Model(inputs=inp, outputs=output)
-model.compile(optimizer='adam', loss='mse')
+model.compile(optimizer='adam', loss='mse', metrics=['accuracy'])
 model.summary()
 # history = model.fit(train_data, train_truth, epochs=1, batch_size=16,
 #                         validation_split=0.2,).history
@@ -211,7 +211,7 @@ def train(params_file="./keras_to_loihi_params", epochs=1, **kwargs):
 
 
 # train this network with normal ReLU neurons
-train(epochs=1, swap_activations={tf.nn.relu: nengo.RectifiedLinear()})
+train(epochs=50, swap_activations={tf.nn.relu: nengo.RectifiedLinear()})
 
 
 def run_network(
@@ -400,7 +400,7 @@ plot_no += 1
 # train this network with normal ReLU neurons
 train(
     params_file="./keras_to_loihi_loihineuron_params",
-    epochs=1,
+    epochs=50,
     swap_activations={tf.nn.relu: nengo_loihi.neurons.LoihiSpikingRectifiedLinear()},
     scale_firing_rates=100,
 )
@@ -416,7 +416,7 @@ plt.savefig(outdir + f'/{plot_no}.jpg')
 plot_no += 1
 
 pres_time = 0.03  # how long to present each input, in seconds
-n_test = 1  # how many samples to test
+n_test = int(datapoints*0.2)  # how many samples to test
 
 # convert the keras model to a nengo network
 nengo_converter = nengo_dl.Converter(
