@@ -42,7 +42,7 @@ def main(args):
     filtered = args.filtered
     os.system('mkdir -p %s'%outdir)
 
-    load = h5.File('../../dataset/240k_1sec_L1.h5', 'r')
+    load = h5.File('../../dataset/240k_1sec_L1_GWdistributed.h5', 'r')
 
     # Define frequency in Hz instead of KHz
     if int(freq) == 2:

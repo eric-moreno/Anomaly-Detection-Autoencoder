@@ -7,6 +7,7 @@ import numpy as np
 import setGPU
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.externals import joblib
+from sklearn.model_selection import train_test_split
 import seaborn as sns
 sns.set(color_codes=True)
 import matplotlib.pyplot as plt
@@ -33,60 +34,52 @@ def main(args):
     timesteps = int(args.timesteps)
     os.system('mkdir -p %s'%outdir)
     
-    load = h5.File('../../dataset/default_simulated_big_3.hdf', 'r')
-    n_test_events = 40000
-    SNR = load['injection_parameters']['%s_snr'%(str(detector).lower())][:][-n_test_events:]
-    test_truth = np.concatenate((np.zeros(n_test_events), np.ones(n_test_events)))
-    
-    '''
-    if int(freq) == 2: 
+    load = h5.File('../../dataset/240k_1sec_L1_GWdistributed.h5', 'r')
+
+    # Define frequency in Hz instead of KHz
+    if int(freq) == 2:
         freq = 2048
-    elif int(freq) == 4: 
+    elif int(freq) == 4:
         freq = 4096
-        
-    if freq%2048 != 0: 
-        print('WARNING: not a supported sampling frequency for simulated data')
-        print('Sampling Frequency: %s'%(freq))
-    
-    n_test_events = 40000
-    noise_samples = load['noise_samples']['%s_strain'%(str(detector).lower())][:][-n_test_events:]
-    injection_samples = load['injection_samples']['%s_strain'%(str(detector).lower())][:][-n_test_events:]
-    SNR = load['injection_parameters']['%s_snr'%(str(detector).lower())][:][-n_test_events:]
-    test_data = np.concatenate((injection_samples, noise_samples))
-    test_truth = np.concatenate((np.ones(n_test_events), np.zeros(n_test_events)))
-    
-    if bool(int(filtered)):
-        print('filtering data with whitening and bandpass')
-        test_data = [filters(sample, freq)[10240:12288] for sample in test_data]
-        print('Done!')
-        
-    # Load previous scaler and transform    
-    scaler_filename = "%s/scaler_data_%s"%(outdir, detector)
-    scaler = joblib.load(scaler_filename) 
-    X_test = scaler.transform(test_data)
-    
-    np.save('test_preprocessed_80k', X_test)
-    sys.exit()
-    '''
-    
-    X_test = np.load('test_preprocessed_80k.npy')
-    print("Testing data shape:", X_test.shape)
+    else:
+        print(f'Given frequency {freq}kHz is not supported. Correct values are 2 or 4kHz.')
+
+    datapoints = 120000
+    gw = np.concatenate((np.zeros(datapoints), np.ones(datapoints)))
+    noise = np.concatenate((np.ones(datapoints), np.zeros(datapoints)))
+    targets = np.transpose(np.array([gw, noise]))
+
+    X = load['data'][:]
+    # splitting the train / test data in ratio 80:20
+    train_data, test_data, train_truth, test_truth = train_test_split(X, targets, test_size=0.2, random_state=42)
+    class_names = np.array(['noise', 'GW'], dtype=str)
+
+    print(train_data.shape)
+    # Reshape inputs
+    train_data = train_data.reshape((train_data.shape[0], 1, -1))
+    print("Train data shape:", train_data.shape)
+    #train_truth = train_truth.reshape((train_truth.shape[0], 1, -1))
+    print("Train labels data shape:", train_truth.shape)
+    test_data = test_data.reshape((test_data.shape[0], 1, -1))
+    print("Test data shape:", test_data.shape)
+    #test_truth = test_truth.reshape((test_truth.shape[0], 1, -1))
+    print("Test labels data shape:", test_truth.shape)
     
     # Evaluate model
     model = load_model('%s/best_model.hdf5'%(outdir))
-    X_pred_test = model.predict(X_test)
-    
+    X_pred_test = model.predict(test_data)
     
     directory_list = [outdir]
-    names = ['CNN+DNN']
+    names = ['CNN Nengo Architecture']
     predictions = [X_pred_test]
     
     # ROC Curve Plot
     plt.figure()
     for name, directory, pred in zip(names, directory_list, predictions): 
         print('Determining performance for: %s'%(name))
-        fpr, tpr, thresholds = roc_curve(test_truth, pred)
+        fpr, tpr, thresholds = roc_curve(np.argmax(test_truth, axis=-1), np.argmax(pred, axis=-1))
         plt.plot(fpr, tpr, lw=2, label='%s (auc = %0.2f)'%(name, auc(fpr, tpr)))
+        print('Accuracy: %s'%(accuracy_score(np.argmax(test_truth, axis=-1), np.argmax(pred, axis=-1))))
         print('Done!')
     plt.plot([0, 1], [0, 1], lw=2, linestyle='--')
     plt.xlim([1e-4, 1])
@@ -97,8 +90,7 @@ def main(args):
     plt.title('LIGO Supervised GW-Detection')
     plt.legend(loc="lower right")
     plt.savefig('%s/ROC_curve_log.jpg'%(outdir))
-    
-    
+              
     # SNR vs Efficiency plot
     plt.figure()
     bins = 30
