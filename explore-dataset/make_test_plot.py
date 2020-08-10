@@ -12,7 +12,7 @@ import h5py as h5
 
 def make_plot():
 
-    plot_path = 'sample.pdf'
+    plot_path = 'sample.jpg'
 
     # Load train and test data
     detector = 'L1'
