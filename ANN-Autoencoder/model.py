@@ -48,6 +48,28 @@ def autoencoder_Conv(X):
     model = Model(inputs=inputs, outputs = output)
     return model 
 
+def autoencoder_Conv2(X):
+    inputs = Input(shape=(X.shape[1], X.shape[2]))
+    L1 = Conv1D(16, 4, activation="relu", dilation_rate=1, padding="same")(inputs)
+    L2 = MaxPooling1D(2)(L1)
+    L3 = Conv1D(32, 4, activation="relu", dilation_rate=2, padding="same")(L2)
+    L4 = MaxPooling1D(2)(L3) 
+    L5 = Conv1D(64, 4, activation="relu", dilation_rate=2, padding="same")(L4)
+    L6 = MaxPooling1D(4)(L5)
+    L7 = Conv1D(128, 8, activation="relu", dilation_rate=2, padding="same")(L6)
+    encoded = MaxPooling1D(4)(L7)
+    L7 = Conv1D(128, 8, activation="relu", dilation_rate=2, padding="same")(encoded)
+    L8 = UpSampling1D(4)(L7)
+    L9 = Conv1D(64, 4, activation="relu", dilation_rate=2, padding="same")(L8)
+    L10 = UpSampling1D(4)(L9)
+    L11 = Conv1D(32, 4, activation="relu", dilation_rate=2, padding="same")(L10)
+    L12 = UpSampling1D(4)(L11)
+    L13 = Conv1D(16, 3, activation="relu", dilation_rate=1, padding="same")(L12)
+    L14 = UpSampling1D(2)(L13)
+    output = Conv1D(1, 4, activation="relu", dilation_rate=1, padding="same")(L12)
+    model = Model(inputs=inputs, outputs = output)
+    return model 
+    
 def autoencoder_ConvDNN(X):
     inputs = Input(shape=(X.shape[1], X.shape[2]))
     L1 = Conv1D(16, 3, activation="relu", padding="same")(inputs) # 10 dims
