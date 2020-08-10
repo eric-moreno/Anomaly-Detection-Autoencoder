@@ -115,13 +115,13 @@ else:
 #features = np.concatenate((noise_samples, injection_samples))
 # targets = np.concatenate((np.zeros(datapoints), np.ones(datapoints)))
 datapoints = 120000
-gw = np.concatenate((np.zeros(datapoints), np.ones(datapoints)))
-noise = np.concatenate((np.ones(datapoints), np.zeros(datapoints)))
+gw = np.concatenate((np.ones(datapoints), np.zeros(datapoints)))
+noise = np.concatenate((np.zeros(datapoints), np.ones(datapoints)))
 targets = np.transpose(np.array([gw, noise]))
 
 X_train = load['data'][:]
 # splitting the train / test data in ratio 80:20
-train_data, test_data, train_truth, test_truth = train_test_split(X_train, targets, test_size=0.2)
+train_data, test_data, train_truth, test_truth = train_test_split(X_train, targets, test_size=0.2, random_state=42)
 class_names = np.array(['noise', 'GW'], dtype=str)
 
 
@@ -209,21 +209,22 @@ def train(params_file="./keras_to_loihi_params", epochs=1, **kwargs):
         # save the parameters to file
         sim.save_params(params_file)
 
-
+'''
 # train this network with normal ReLU neurons
-train(epochs=50, swap_activations={tf.nn.relu: nengo.RectifiedLinear()})
-
+train(epochs=25, params_file="./keras_to_loihi_params_15epoch", swap_activations={tf.nn.relu: nengo.RectifiedLinear()})
+'''
 
 def run_network(
         activation,
-        params_file="./keras_to_loihi_params",
+        params_file="./keras_to_loihi_params_15epoch",
         n_steps=30,
         scale_firing_rates=1,
         synapse=None,
-        n_test=100,
+        n_test=1000,
         n_plots=1,
         plot_idx=-1
 ):
+    
     # convert the keras model to a nengo network
     nengo_converter = nengo_dl.Converter(
         model,
@@ -232,6 +233,12 @@ def run_network(
         synapse=synapse,
         max_to_avg_pool=True
     )
+    
+    
+    # set a low-pass filter value on all synapses in the network
+    if synapse is not None:
+        for conn in nengo_converter.net.all_connections:
+            conn.synapse = synapse
 
     print_neurons_type(nengo_converter)
 
@@ -281,7 +288,7 @@ def run_network(
     plt.xscale('log')
     plt.title('LIGO Supervised GW-Detection')
     plt.legend(loc="lower right")
-    plt.savefig('%s/ROC_curve_log_1.jpg'%(outdir))
+    plt.savefig('%s/ROC_curve_log_%s.jpg'%(outdir, plot_idx))
     
     
     # Plot normalized confusion matrix
@@ -358,13 +365,13 @@ plt.savefig(outdir + f'/{plot_no}.jpg')
 plot_no += 1
 
 # test the trained networks using spiking neurons
-run_network(activation=nengo.SpikingRectifiedLinear(), scale_firing_rates=100, synapse=0.005, plot_idx=plot_no)
+run_network(activation=nengo.SpikingRectifiedLinear(), n_steps=50, plot_idx=plot_no, scale_firing_rates=500, synapse=0.005)
 plt.savefig(outdir + f'/{plot_no}.jpg')
 plot_no += 1
 
 # test the trained networks using spiking neurons
-run_network(activation=nengo_loihi.neurons.LoihiSpikingRectifiedLinear(), scale_firing_rates=100, synapse=0.005,
-            plot_idx=plot_no)
+run_network(activation=nengo_loihi.neurons.LoihiSpikingRectifiedLinear(), n_steps=50,
+            plot_idx=plot_no, scale_firing_rates=500, synapse=0.005)
 plt.savefig(outdir + f'/{plot_no}.jpg')
 plot_no += 1
 
@@ -406,31 +413,33 @@ scale_firing_rates = {
 run_network(
     activation=nengo_loihi.neurons.LoihiSpikingRectifiedLinear(),
     scale_firing_rates=scale_firing_rates,
-    synapse=0.005, plot_idx=plot_no
+    synapse=0.01, plot_idx=plot_no
 )
 plt.savefig(outdir + f'/{plot_no}.jpg')
 plot_no += 1
 
+'''
 # train this network with normal ReLU neurons
 train(
-    params_file="./keras_to_loihi_loihineuron_params",
-    epochs=50,
+    params_file="./keras_to_loihi_loihineuron_params_15epoch",
+    epochs=25,
     swap_activations={tf.nn.relu: nengo_loihi.neurons.LoihiSpikingRectifiedLinear()},
     scale_firing_rates=100,
 )
+'''
 
 # test the trained networks using spiking neurons
 run_network(
     activation=nengo_loihi.neurons.LoihiSpikingRectifiedLinear(),
-    scale_firing_rates=100,
-    params_file="./keras_to_loihi_loihineuron_params",
-    synapse=0.005, plot_idx=plot_no
+    scale_firing_rates=20,
+    params_file="./keras_to_loihi_loihineuron_params_15epoch",
+    synapse=0.01, plot_idx=plot_no
 )
 plt.savefig(outdir + f'/{plot_no}.jpg')
 plot_no += 1
 
 pres_time = 0.03  # how long to present each input, in seconds
-n_test = int(datapoints*0.2)  # how many samples to test
+n_test = 1000  # how many samples to test
 
 # convert the keras model to a nengo network
 nengo_converter = nengo_dl.Converter(
@@ -448,7 +457,7 @@ nengo_output = nengo_converter.outputs[output]
 
 # build network, load in trained weights, save to network
 with nengo_dl.Simulator(net) as nengo_sim:
-    nengo_sim.load_params("keras_to_loihi_loihineuron_params")
+    nengo_sim.load_params("keras_to_loihi_loihineuron_params_15epoch")
     nengo_sim.freeze_params(net)
 
 with net:
