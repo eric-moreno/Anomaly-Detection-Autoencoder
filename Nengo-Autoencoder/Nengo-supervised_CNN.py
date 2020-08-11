@@ -3,7 +3,6 @@
 import os
 import collections
 import warnings
-
 import matplotlib.pyplot as plt
 import nengo
 import nengo_dl
@@ -124,6 +123,7 @@ X_train = load['data'][:]
 train_data, test_data, train_truth, test_truth = train_test_split(X_train, targets, test_size=0.2, random_state=42)
 class_names = np.array(['noise', 'GW'], dtype=str)
 
+del X_train, targets
 
 # With LIGO simulated data, the sample isn't pre-filtered so need to filter again. Real data is not filtered yet.
 #if bool(int(filtered)):
@@ -187,7 +187,7 @@ model.compile(optimizer='adam', loss='mse', metrics=['accuracy'])
 model.summary()
 # history = model.fit(train_data, train_truth, epochs=1, batch_size=16,
 #                         validation_split=0.2,).history
-
+del train_data, train_truth
 
 def train(params_file="./keras_to_loihi_params", epochs=1, **kwargs):
     converter = nengo_dl.Converter(model, max_to_avg_pool=True, **kwargs)
@@ -358,20 +358,19 @@ def run_network(
 def is_spiking_type(neuron_type):
     return isinstance(neuron_type, (nengo.LIF, nengo.SpikingRectifiedLinear))
 
-
-# test the trained networks on test set
-mean_rates = run_network(activation=nengo.RectifiedLinear(), n_steps=10, plot_idx=plot_no)
+mean_rates = run_network(activation=nengo.RectifiedLinear(), n_steps=50, plot_idx=plot_no)
 plt.savefig(outdir + f'/{plot_no}.jpg')
 plot_no += 1
 
+
 # test the trained networks using spiking neurons
-run_network(activation=nengo.SpikingRectifiedLinear(), n_steps=50, plot_idx=plot_no, scale_firing_rates=500, synapse=0.005)
+run_network(activation=nengo.SpikingRectifiedLinear(), n_steps=50, plot_idx=plot_no, scale_firing_rates=5000, synapse=0.005)
 plt.savefig(outdir + f'/{plot_no}.jpg')
 plot_no += 1
 
 # test the trained networks using spiking neurons
 run_network(activation=nengo_loihi.neurons.LoihiSpikingRectifiedLinear(), n_steps=50,
-            plot_idx=plot_no, scale_firing_rates=500, synapse=0.005)
+            plot_idx=plot_no, scale_firing_rates=5000, synapse=0.005)
 plt.savefig(outdir + f'/{plot_no}.jpg')
 plot_no += 1
 
@@ -413,7 +412,7 @@ scale_firing_rates = {
 run_network(
     activation=nengo_loihi.neurons.LoihiSpikingRectifiedLinear(),
     scale_firing_rates=scale_firing_rates,
-    synapse=0.01, plot_idx=plot_no
+    synapse=0.005, plot_idx=plot_no, n_steps=50
 )
 plt.savefig(outdir + f'/{plot_no}.jpg')
 plot_no += 1
@@ -431,9 +430,9 @@ train(
 # test the trained networks using spiking neurons
 run_network(
     activation=nengo_loihi.neurons.LoihiSpikingRectifiedLinear(),
-    scale_firing_rates=20,
+    scale_firing_rates=5000,
     params_file="./keras_to_loihi_loihineuron_params_15epoch",
-    synapse=0.01, plot_idx=plot_no
+    synapse=0.005, plot_idx=plot_no, n_steps=50
 )
 plt.savefig(outdir + f'/{plot_no}.jpg')
 plot_no += 1
@@ -444,7 +443,7 @@ n_test = 1000  # how many samples to test
 # convert the keras model to a nengo network
 nengo_converter = nengo_dl.Converter(
     model,
-    scale_firing_rates=400,
+    scale_firing_rates=5000,
     swap_activations={tf.nn.relu: nengo_loihi.neurons.LoihiSpikingRectifiedLinear()},
     synapse=0.005,
     max_to_avg_pool=True,
