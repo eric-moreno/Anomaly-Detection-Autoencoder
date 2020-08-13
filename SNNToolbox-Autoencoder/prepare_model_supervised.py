@@ -2,17 +2,55 @@
 
 import os
 import numpy as np
-import joblib
 import seaborn as sns
 import matplotlib.pyplot as plt
 import h5py as h5
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.utils import shuffle
 from gwpy.timeseries import TimeSeries
 from keras.callbacks import EarlyStopping, ModelCheckpoint
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import roc_curve, auc, confusion_matrix
+from sklearn.utils.multiclass import unique_labels
 from architectures_supervised import autoencoder_ConvDNN, autoencoder_DNN
 
 sns.set(color_codes=True)
+
+
+def plot_confusion_matrix(y_true, y_pred, classes, normalize=False, title=None, cmap=plt.cm.Blues):
+    """ This function prints and plots the confusion matrix. Normalization can be added by setting `normalize=True` """
+    if not title:
+        if normalize:
+            title = 'Normalized confusion matrix'
+        else:
+            title = 'Confusion matrix, without normalization'
+
+    # Compute confusion matrix
+    cm = confusion_matrix(y_true, y_pred)
+    # Only use the labels that appear in the data
+    classes = classes[unique_labels(y_true, y_pred)]
+    if normalize:
+        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+
+    print(title)
+    print(cm)
+
+    fig, ax = plt.subplots()
+    im = ax.imshow(cm, interpolation='nearest', cmap=cmap)
+    ax.figure.colorbar(im, ax=ax)
+    ax.set(xticks=np.arange(cm.shape[1]), yticks=np.arange(cm.shape[0]), xticklabels=classes, yticklabels=classes,
+           title=title, ylabel='True label', xlabel='Predicted label')
+
+    # Rotate the tick labels and set their alignment.
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
+
+    # Loop over data dimensions and create text annotations.
+    fmt = '.2f' if normalize else 'd'
+    thresh = cm.max() / 2.
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            ax.text(j, i, format(cm[i, j], fmt), ha="center", va="center",
+                    color="white" if cm[i, j] > thresh else "black")
+    fig.tight_layout()
+    return ax
 
 
 def filters(array, sample_frequency):
@@ -26,67 +64,51 @@ def filters(array, sample_frequency):
 def prepare_model():
     """ Main function to prepare and train the model """
     outdir = "Outputs"
-    detector = "L1"
-    freq = 2
-    filtered = 1
     os.system(f'mkdir {outdir}')
+    model = 'autoencoder_ConvDNN'
 
     # Load train and test data
-    load = h5.File('../../dataset/default_simulated.hdf', 'r')
+    load = h5.File('../../dataset/240k_1sec_L1.h5', 'r')
+    X_train = load['data'][:]
 
-    # Define frequency in Hz instead of KHz
-    if int(freq) == 2:
-        freq = 2048
-    elif int(freq) == 4:
-        freq = 4096
-    else:
-        return print(f'Given frequency {freq}kHz is not supported. Correct values are 2 or 4kHz.')
+    datapoints = 120000
+    gw = np.concatenate((np.ones(datapoints), np.zeros(datapoints)))
+    noise = np.concatenate((np.zeros(datapoints), np.ones(datapoints)))
+    targets = np.transpose(np.array([gw, noise]))
 
-    datapoints = 5000
-    noise_samples = load['noise_samples']['%s_strain' % (str(detector).lower())][:datapoints]
-    injection_samples = load['injection_samples']['%s_strain' % (str(detector).lower())][:datapoints]
-    train_data = np.concatenate((noise_samples, injection_samples))
+    # splitting the train / test data in ratio 80:20
+    train_data, test_data, train_truth, test_truth = train_test_split(X_train, targets, test_size=0.2, random_state=42)
+    class_names = np.array(['noise', 'GW'], dtype=str)
 
-    gw = np.concatenate((np.zeros(datapoints), np.ones(datapoints)))
-    noise = np.concatenate((np.ones(datapoints), np.zeros(datapoints)))
+    # Reshape inputs for DNN model
+    if model == 'autoencoder_DNN':
+        train_data = train_data.reshape((train_data.shape[0], 1, -1))
+        train_truth = train_truth.reshape((train_truth.shape[0], 1, -1))
+        test_data = test_data.reshape((test_data.shape[0], 1, -1))
+        test_truth = test_truth.reshape((test_truth.shape[0], 1, -1))
 
-    train_truth = np.transpose(np.array([gw, noise]))
-    train_data, train_truth = shuffle(train_data, train_truth)
+    print("Train data shape:", train_data.shape)
+    print("Train labels data shape:", train_truth.shape)
+    print("Test data shape:", test_data.shape)
+    print("Test labels data shape:", test_truth.shape)
 
-    # With LIGO simulated data, the sample isn't pre-filtered so need to filter again.
-    # Real data is not filtered yet.
-    if bool(int(filtered)):
-        print('Filtering data with whitening and bandpass')
-        print(f'Sample Frequency: {freq} Hz')
-        x = [filters(sample, freq)[7168:15360] for sample in train_data]
-        print('Filtering completed')
-
-    # Normalize the data
-    scaler = MinMaxScaler()
-    X_train = scaler.fit_transform(x)
-    scaler_filename = f"{outdir}/scaler_data_{detector}"
-    joblib.dump(scaler, scaler_filename)
-
-    print("Training data shape:", X_train.shape)
-    print("Testing data shape:", train_truth.shape)
-
-    np.savez('x_test.npz', arr_0=X_train)
+    np.savez('x_test.npz', arr_0=train_data)
     np.savez('y_test.npz', arr_0=train_truth)
     print("Test and Train data saved in npz format")
 
-    # Define model
-    model = autoencoder_DNN(X_train)
+    # Define a model
+    model = autoencoder_ConvDNN(train_data)
     model.compile(optimizer='adam', loss='mse', metrics=['accuracy'])
     model.summary()
 
-    # fit the model to the data
+    # Fit the model to the data
     nb_epochs = 300
     batch_size = 16
     earlyStopping = EarlyStopping(monitor='val_loss', patience=10, verbose=0, mode='min')
-    mcp_save = ModelCheckpoint(f'{outdir}/best_model.hdf5', save_best_only=True, monitor='val_loss', mode='min')
-    history = model.fit(X_train, train_truth, epochs=nb_epochs, batch_size=batch_size,
+    mcp_save = ModelCheckpoint('autoencoder2SNN.h5', save_best_only=True, monitor='val_loss', mode='min')
+    history = model.fit(train_data, train_truth, epochs=nb_epochs, batch_size=batch_size,
                         validation_split=0.2, callbacks=[earlyStopping, mcp_save]).history
-    model.save(f'{outdir}/last_model.hdf5')
+    model.save(f'{outdir}/last_model.h5')
 
     fig, ax = plt.subplots(figsize=(14, 6), dpi=80)
     ax.plot(history['loss'], 'b', label='Train', linewidth=2)
@@ -96,6 +118,32 @@ def prepare_model():
     ax.set_xlabel('Epoch')
     ax.legend(loc='upper right')
     plt.savefig(f'{outdir}/loss.jpg')
+
+    # Evaluate the model
+    predictions = model.predict(test_data)
+
+    # Generate a ROC curve
+    plt.figure()
+    fpr, tpr, thresholds = roc_curve(test_truth.argmax(axis=1), predictions.argmax(axis=1))
+    plt.plot(fpr, tpr, lw=2, label='%s (auc = %0.2f)' % ('ANN model for SNN-TB', auc(fpr, tpr)))
+    plt.xlim([1e-4, 1])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.xscale('log')
+    plt.title('LIGO Supervised GW-Detection')
+    plt.legend(loc="lower right")
+    plt.savefig('%s/ROC_curve.jpg' % outdir)
+
+    # Generate unnormalized confusion matrix
+    plot_confusion_matrix(test_truth.argmax(axis=1), predictions.argmax(axis=1), classes=class_names,
+                          title='Confusion matrix, without normalization')
+    plt.savefig(outdir + '/confusion_matrix_unnormalized.jpg')
+
+    # Generate normalized confusion matrix
+    plot_confusion_matrix(test_truth.argmax(axis=1), predictions.argmax(axis=1), classes=class_names, normalize=True,
+                          title='Normalized confusion matrix')
+    plt.savefig(outdir + '/confusion_matrix_normalized.jpg')
 
 
 if __name__ == "__main__":
