@@ -7,6 +7,7 @@ import setGPU
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.externals import joblib
 from sklearn.utils import shuffle
+from sklearn.model_selection import train_test_split
 import seaborn as sns
 sns.set(color_codes=True)
 import matplotlib.pyplot as plt
@@ -25,7 +26,7 @@ from keras import regularizers
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 import argparse
 
-from model_supervised import autoencoder_ConvDNN, autoencoder_DNN
+from model_supervised import autoencoder_ConvDNN, autoencoder_DNN, autoencoder_ConvDNN_Nengo
 
 
 def filters(array, sample_frequency):
@@ -40,58 +41,40 @@ def main(args):
     freq = args.freq
     filtered = args.filtered
     os.system('mkdir -p %s'%outdir)
-    '''
-    # Load train 
-    load_1 = h5.File('../../dataset/default_simulated_big_1.hdf', 'r')
-    load_2 = h5.File('../../dataset/default_simulated_big_2.hdf', 'r')
-    load_3 = h5.File('../../dataset/default_simulated_big_3.hdf', 'r')
-    
-    datapoints = 40000
-    noise_samples_1 = load_1['noise_samples']['%s_strain'%(str(detector).lower())][:datapoints]
-    injection_samples_1 = load_1['injection_samples']['%s_strain'%(str(detector).lower())][:datapoints]
-    noise_samples_2 = load_2['noise_samples']['%s_strain'%(str(detector).lower())][:datapoints]
-    injection_samples_2 = load_2['injection_samples']['%s_strain'%(str(detector).lower())][:datapoints]
-    #noise_samples_3 = load_3['noise_samples']['%s_strain'%(str(detector).lower())][:int(datapoints)]
-    #injection_samples_3 = load_3['injection_samples']['%s_strain'%(str(detector).lower())][:int(datapoints)]
-    #del load_1, load_2, load_3
-    #train_data = np.concatenate((noise_samples_1, noise_samples_2 ,noise_samples_3, injection_samples_1, 
-    #                             injection_samples_2, injection_samples_3))
-    train_data = np.concatenate((noise_samples_1, noise_samples_2, injection_samples_1, injection_samples_2))
-    train_truth = np.concatenate((np.zeros(int(datapoints*2)), np.ones(int(datapoints*2))))
-    #train_data, train_truth = shuffle(train_data, train_truth)
 
-    #del noise_samples_1, noise_samples_2 ,noise_samples_3, injection_samples_1, injection_samples_2, injection_samples_3
-    
-    # Definining frequency in Hz instead of KHz
-    if int(freq) == 2: 
+    load = h5.File('../../dataset/240k_1sec_L1_GWdistributed.h5', 'r')
+
+    # Define frequency in Hz instead of KHz
+    if int(freq) == 2:
         freq = 2048
-    elif int(freq) == 4: 
+    elif int(freq) == 4:
         freq = 4096
+    else:
+        print(f'Given frequency {freq}kHz is not supported. Correct values are 2 or 4kHz.')
+
+    datapoints = 120000
+    gw = np.concatenate((np.zeros(datapoints), np.ones(datapoints)))
+    noise = np.concatenate((np.ones(datapoints), np.zeros(datapoints)))
+    targets = np.transpose(np.array([gw, noise]))
+
+    X = load['data'][:]
+    # splitting the train / test data in ratio 80:20
+    train_data, test_data, train_truth, test_truth = train_test_split(X, targets, test_size=0.2, random_state=42)
+    class_names = np.array(['noise', 'GW'], dtype=str)
+
+    print(train_data.shape)
+    # Reshape inputs
+    train_data = train_data.reshape((train_data.shape[0], 1, -1))
+    print("Train data shape:", train_data.shape)
+    #train_truth = train_truth.reshape((train_truth.shape[0], 1, -1))
+    print("Train labels data shape:", train_truth.shape)
+    test_data = test_data.reshape((test_data.shape[0], 1, -1))
+    print("Test data shape:", test_data.shape)
+    #test_truth = test_truth.reshape((test_truth.shape[0], 1, -1))
+    print("Test labels data shape:", test_truth.shape)
     
-    # With LIGO simulated data, the sample isn't pre-filtered so need to filter again. Real data
-    # is not filtered yet. 
-    if bool(int(filtered)):
-        print('Filtering data with whitening and bandpass')
-        print('Sample Frequency: %s Hz'%(freq))
-        x = [filters(sample, freq)[10240:12288] for sample in train_data]
-        print('Done!')
-    # Normalize the data
-    scaler = MinMaxScaler()
-    X_train = scaler.fit_transform(x)
-    scaler_filename = "%s/scaler_data_%s"%(outdir, detector)
-    joblib.dump(scaler, scaler_filename)
-    
-    np.save('train_preprocessed_160k', X_train)
-    sys.exit()
-    '''
-    datapoints = 40000
-    train_truth = np.concatenate((np.ones(int(datapoints*2)), np.zeros(int(datapoints*2))))
-    
-    X_train = np.load('train_preprocessed_160k.npy')
-    print("Training data shape:", X_train.shape)
-    X_train, train_truth = shuffle(X_train, train_truth)
     #Define model 
-    model = autoencoder_DNN(X_train) 
+    model = autoencoder_ConvDNN_Nengo(train_data) 
     model.compile(optimizer='adam', loss='mse', metrics=['accuracy'])
     model.summary()
 
@@ -100,7 +83,7 @@ def main(args):
     batch_size = 16
     earlyStopping = EarlyStopping(monitor='val_loss', patience=10, verbose=0, mode='min')
     mcp_save = ModelCheckpoint('%s/best_model.hdf5'%(outdir), save_best_only=True, monitor='val_loss', mode='min')
-    history = model.fit(X_train, train_truth, epochs=nb_epochs, batch_size=batch_size,
+    history = model.fit(train_data, train_truth, epochs=nb_epochs, batch_size=batch_size,
                         validation_split=0.2, callbacks=[earlyStopping, mcp_save]).history
     model.save('%s/last_model.hdf5'%(outdir))
 

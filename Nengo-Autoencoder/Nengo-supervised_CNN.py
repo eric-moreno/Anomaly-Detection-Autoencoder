@@ -18,6 +18,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 
 from keras.layers import Input, Dense, Reshape, MaxPooling1D, MaxPooling2D, Conv1D, Conv2D, Flatten, AveragePooling1D
+
 from keras.models import Model
 
 import nengo_loihi
@@ -85,7 +86,8 @@ warnings.filterwarnings("ignore", message="No GPU", module="nengo_dl")
 # np.random.seed(0)
 # tf.random.set_seed(0)
 
-outdir = "Output_CNN_2D"
+outdir = "Outputs"
+
 detector = "L1"
 freq = 2
 filtered = 1
@@ -106,15 +108,8 @@ elif int(freq) == 4:
 else:
     print(f'Given frequency {freq}kHz is not supported. Correct values are 2 or 4kHz.')
 
-#datapoints = len(load['injection_samples']['%s_strain' % (str(detector).lower())])
-#noise_samples = load['noise_samples']['%s_strain' % (str(detector).lower())][:datapoints]
-#injection_samples = load['injection_samples']['%s_strain' % (str(detector).lower())][:datapoints]
-#print("Noise samples shape:", noise_samples.shape)
-#print("Injection samples shape:", injection_samples.shape)
-
-#features = np.concatenate((noise_samples, injection_samples))
-# targets = np.concatenate((np.zeros(datapoints), np.ones(datapoints)))
 datapoints = 120000
+
 gw = np.concatenate((np.zeros(datapoints), np.ones(datapoints)))
 noise = np.concatenate((np.ones(datapoints), np.zeros(datapoints)))
 targets = np.transpose(np.array([gw, noise]))
@@ -122,15 +117,8 @@ targets = np.transpose(np.array([gw, noise]))
 X_train = load['data'][:]
 # splitting the train / test data in ratio 80:20
 train_data, test_data, train_truth, test_truth = train_test_split(X_train, targets, test_size=0.2)
+
 class_names = np.array(['noise', 'GW'], dtype=str)
-
-
-# With LIGO simulated data, the sample isn't pre-filtered so need to filter again. Real data is not filtered yet.
-#if bool(int(filtered)):
-#    print('Filtering data with whitening and bandpass')
-#   print('Sample Frequency: %s Hz' % freq)
-#    x = [filters(sample, freq)[7168:15360] for sample in train_data]
-#    print('Done!')
 
 # Normalize the data
 # scaler = MinMaxScaler()
@@ -150,6 +138,7 @@ print("Test labels data shape:", test_truth.shape)
 
 # Define the model
 inp = Input(shape=(train_data.shape[2],), name="input")
+
 
 x = Reshape((train_data.shape[2], 1, 1))(inp)
 
@@ -177,6 +166,7 @@ L4_layer = Conv2D(128, (8, 1), activation=tf.nn.relu, use_bias=False)
 L4 = L4_layer(x)
 
 x = MaxPooling2D((4, 1), strides=(4, 1))(L4)
+
 x = Flatten()(x)
 
 L5_layer = Dense(128, activation=tf.nn.relu, use_bias=False)
@@ -457,16 +447,16 @@ with net:
 # set on-chip layers
 with net:
     L1_shape = L1_layer.output_shape[1:]
-    net.config[nengo_converter.layers[L1].ensemble].block_shape = nengo_loihi.BlockShape((256, 4, 1), L1_shape)
+    net.config[nengo_converter.layers[L1].ensemble].block_shape = nengo_loihi.BlockShape((16, 16, 4), L1_shape)
 
     L2_shape = L2_layer.output_shape[1:]
-    net.config[nengo_converter.layers[L2].ensemble].block_shape = nengo_loihi.BlockShape((64, 16, 1), L2_shape)
+    net.config[nengo_converter.layers[L2].ensemble].block_shape = nengo_loihi.BlockShape((8, 8, 16), L2_shape)
 
     L3_shape = L3_layer.output_shape[1:]
-    net.config[nengo_converter.layers[L3].ensemble].block_shape = nengo_loihi.BlockShape((32, 32, 1), L3_shape)
+    net.config[nengo_converter.layers[L3].ensemble].block_shape = nengo_loihi.BlockShape((4, 4, 32), L3_shape)
 
     L4_shape = L4_layer.output_shape[1:]
-    net.config[nengo_converter.layers[L4].ensemble].block_shape = nengo_loihi.BlockShape((16, 64, 1), L4_shape)
+    net.config[nengo_converter.layers[L4].ensemble].block_shape = nengo_loihi.BlockShape((2, 2, 64), L4_shape)
 
     L5_shape = L5_layer.output_shape[1:]
     net.config[nengo_converter.layers[L5].ensemble].block_shape = nengo_loihi.BlockShape((50,), L5_shape)
@@ -478,7 +468,7 @@ print_neurons_type(nengo_converter)
 
 
 # build Nengo Loihi Simulator and run network
-with nengo_loihi.Simulator(net, remove_passthrough=False) as loihi_sim:
+with nengo_loihi.Simulator(net) as loihi_sim:
     loihi_sim.run(n_test * pres_time)
 
     # get output (last timestep of each presentation period)
