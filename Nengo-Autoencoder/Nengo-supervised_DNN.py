@@ -86,6 +86,7 @@ warnings.filterwarnings("ignore", message="No GPU", module="nengo_dl")
 # tf.random.set_seed(0)
 
 outdir = "Outputs"
+
 detector = "L1"
 freq = 2
 filtered = 1
@@ -96,7 +97,7 @@ os.system(f'mkdir {outdir}')
 plot_no = 0
 
 # Load train and test data
-load = h5.File('../../dataset/default_simulated.hdf', 'r')
+load = h5.File('../../dataset/240k_1sec_L1.h5', 'r')
 
 # Define frequency in Hz instead of KHz
 if int(freq) == 2:
@@ -106,30 +107,17 @@ elif int(freq) == 4:
 else:
     print(f'Given frequency {freq}kHz is not supported. Correct values are 2 or 4kHz.')
 
-datapoints = len(load['injection_samples']['%s_strain' % (str(detector).lower())])
-noise_samples = load['noise_samples']['%s_strain' % (str(detector).lower())][:datapoints]
-injection_samples = load['injection_samples']['%s_strain' % (str(detector).lower())][:datapoints]
-print("Noise samples shape:", noise_samples.shape)
-print("Injection samples shape:", injection_samples.shape)
-
-features = np.concatenate((noise_samples, injection_samples))
-# targets = np.concatenate((np.zeros(datapoints), np.ones(datapoints)))
-
+datapoints = 120000
 gw = np.concatenate((np.zeros(datapoints), np.ones(datapoints)))
 noise = np.concatenate((np.ones(datapoints), np.zeros(datapoints)))
 targets = np.transpose(np.array([gw, noise]))
 
+
+X_train = load['data'][:]
 # splitting the train / test data in ratio 80:20
-train_data, test_data, train_truth, test_truth = train_test_split(features, targets, test_size=0.2)
+train_data, test_data, train_truth, test_truth = train_test_split(X_train, targets, test_size=0.2)
 class_names = np.array(['noise', 'GW'], dtype=str)
 
-
-# With LIGO simulated data, the sample isn't pre-filtered so need to filter again. Real data is not filtered yet.
-if bool(int(filtered)):
-    print('Filtering data with whitening and bandpass')
-    print('Sample Frequency: %s Hz' % freq)
-    x = [filters(sample, freq)[7168:15360] for sample in train_data]
-    print('Done!')
 
 # Normalize the data
 # scaler = MinMaxScaler()
@@ -192,8 +180,7 @@ def train(params_file="./keras_to_loihi_params", epochs=1, **kwargs):
 
 
 # train this network with normal ReLU neurons
-train(epochs=2, swap_activations={tf.nn.relu: nengo.RectifiedLinear()})
-
+train(epochs=30, swap_activations={tf.nn.relu: nengo.RectifiedLinear()})
 
 def run_network(
         activation,
@@ -374,7 +361,7 @@ plot_no += 1
 # train this network with normal ReLU neurons
 train(
     params_file="./keras_to_loihi_loihineuron_params",
-    epochs=2,
+    epochs=30,
     swap_activations={tf.nn.relu: nengo_loihi.neurons.LoihiSpikingRectifiedLinear()},
     scale_firing_rates=100,
 )
