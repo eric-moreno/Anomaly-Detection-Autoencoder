@@ -65,7 +65,6 @@ def prepare_model():
     """ Main function to prepare and train the model """
     outdir = "Outputs"
     os.system(f'mkdir {outdir}')
-    model = 'autoencoder_ConvDNN'
 
     # Load train and test data
     load = h5.File('../../dataset/240k_1sec_L1.h5', 'r')
@@ -80,20 +79,13 @@ def prepare_model():
     train_data, test_data, train_truth, test_truth = train_test_split(X_train, targets, test_size=0.2, random_state=42)
     class_names = np.array(['noise', 'GW'], dtype=str)
 
-    # Reshape inputs for DNN model
-    if model == 'autoencoder_DNN':
-        train_data = train_data.reshape((train_data.shape[0], 1, -1))
-        train_truth = train_truth.reshape((train_truth.shape[0], 1, -1))
-        test_data = test_data.reshape((test_data.shape[0], 1, -1))
-        test_truth = test_truth.reshape((test_truth.shape[0], 1, -1))
-
     print("Train data shape:", train_data.shape)
     print("Train labels data shape:", train_truth.shape)
     print("Test data shape:", test_data.shape)
     print("Test labels data shape:", test_truth.shape)
 
-    np.savez('x_test.npz', arr_0=train_data)
-    np.savez('y_test.npz', arr_0=train_truth)
+    np.savez('x_test.npz', arr_0=test_data)
+    np.savez('y_test.npz', arr_0=test_truth)
     print("Test and Train data saved in npz format")
 
     # Define a model
@@ -102,7 +94,7 @@ def prepare_model():
     model.summary()
 
     # Fit the model to the data
-    nb_epochs = 300
+    nb_epochs = 10
     batch_size = 16
     earlyStopping = EarlyStopping(monitor='val_loss', patience=10, verbose=0, mode='min')
     mcp_save = ModelCheckpoint('autoencoder2SNN.h5', save_best_only=True, monitor='val_loss', mode='min')
