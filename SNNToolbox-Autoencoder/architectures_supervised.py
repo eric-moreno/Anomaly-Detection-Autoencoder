@@ -1,6 +1,6 @@
 """ Autoencoder models convertable to SNNs for anomaly detection. """
 
-from keras.layers import Input, Dense, Conv2D, Flatten, Reshape, MaxPool2D, MaxPooling1D, AveragePooling2D
+from keras.layers import Input, Dense, Conv2D, Flatten, Reshape
 from keras.models import Model
 
 
