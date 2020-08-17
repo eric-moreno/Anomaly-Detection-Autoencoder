@@ -11,9 +11,9 @@ normalize = False
 
 [simulation]
 simulator = loihi
-duration = 200
+duration = 20
 dt = 1
-num_to_test = 1000
+num_to_test = 10
 batch_size = 10
 reset_between_nth_sample = 1
 keras_backend = tensorflow

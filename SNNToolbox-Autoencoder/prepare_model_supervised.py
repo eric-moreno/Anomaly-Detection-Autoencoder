@@ -64,7 +64,7 @@ def filters(array, sample_frequency):
 def prepare_model():
     """ Main function to prepare and train the model """
     outdir = "Outputs"
-    os.system(f'mkdir {outdir}')
+    os.system('mkdir ' + outdir)
 
     # Load train and test data
     load = h5.File('../../dataset/240k_1sec_L1.h5', 'r')
@@ -100,7 +100,7 @@ def prepare_model():
     mcp_save = ModelCheckpoint('autoencoder2SNN.h5', save_best_only=True, monitor='val_loss', mode='min')
     history = model.fit(train_data, train_truth, epochs=nb_epochs, batch_size=batch_size,
                         validation_split=0.2, callbacks=[earlyStopping, mcp_save]).history
-    model.save(f'{outdir}/last_model.h5')
+    model.save(outdir + '/last_model.h5')
 
     fig, ax = plt.subplots(figsize=(14, 6), dpi=80)
     ax.plot(history['loss'], 'b', label='Train', linewidth=2)
@@ -109,7 +109,7 @@ def prepare_model():
     ax.set_ylabel('Loss (mse)')
     ax.set_xlabel('Epoch')
     ax.legend(loc='upper right')
-    plt.savefig(f'{outdir}/loss.jpg')
+    plt.savefig(outdir + '/loss.jpg')
 
     # Evaluate the model
     predictions = model.predict(test_data)
@@ -125,7 +125,7 @@ def prepare_model():
     plt.xscale('log')
     plt.title('LIGO Supervised GW-Detection')
     plt.legend(loc="lower right")
-    plt.savefig('%s/ROC_curve.jpg' % outdir)
+    plt.savefig(outdir + '/ROC_curve.jpg')
 
     # Generate unnormalized confusion matrix
     plot_confusion_matrix(test_truth.argmax(axis=1), predictions.argmax(axis=1), classes=class_names,
