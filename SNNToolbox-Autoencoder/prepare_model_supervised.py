@@ -68,7 +68,7 @@ def prepare_model():
 
     # Load train and test data
     load = h5.File('../../dataset/240k_1sec_L1.h5', 'r')
-    X_train = load['data'][:]
+    X_train = load['data'][:, :2025]
 
     datapoints = 120000
     gw = np.concatenate((np.ones(datapoints), np.zeros(datapoints)))
