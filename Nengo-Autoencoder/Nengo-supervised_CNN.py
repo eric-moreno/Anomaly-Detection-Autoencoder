@@ -418,7 +418,7 @@ plot_no += 1
 
 # Prepare the model to run on-chip
 pres_time = 0.06  # how long to present each input, in seconds
-n_test = 2  # how many samples to test
+n_test = 200  # how many samples to test
 
 # convert the keras model to a nengo network
 nengo_converter = nengo_dl.Converter(
