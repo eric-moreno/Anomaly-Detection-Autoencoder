@@ -418,7 +418,7 @@ plot_no += 1
 
 # Prepare the model to run on-chip
 pres_time = 0.06  # how long to present each input, in seconds
-n_test = 200  # how many samples to test
+n_test = 2  # how many samples to test
 
 # convert the keras model to a nengo network
 nengo_converter = nengo_dl.Converter(
@@ -498,6 +498,8 @@ with nengo_loihi.Simulator(net, remove_passthrough=False) as loihi_sim:
 timesteps = loihi_sim.trange() / loihi_sim.dt
 
 # plot data given to the network
+plt.figure(figsize=(12, 4))
+plt.subplot(2, 1, 1)
 a = np.array([])
 for i in range(n_test):
     a = np.concatenate((a, test_data[i][0]), axis=0)
