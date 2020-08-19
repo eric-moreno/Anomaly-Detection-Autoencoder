@@ -310,7 +310,7 @@ def run_network(
         plt.subplot(1, 3, 3)
         plt.title("Output predictions\nProbability")
         plt.plot(tf.nn.softmax(data[nengo_output][i]))
-        plt.legend([str(j) for j in range(10)], loc="upper left")
+        plt.legend([str(j) for j in range(2)], loc="upper left")
         plt.xlabel("Timestep")
 
         plt.tight_layout()
@@ -495,16 +495,17 @@ with nengo_loihi.Simulator(net, remove_passthrough=False) as loihi_sim:
     plt.savefig(outdir + '/ROC_curve_%s.jpg' % plot_no)
     plot_no += 1
 
-plt.figure(figsize=(12, 4))
 timesteps = loihi_sim.trange() / loihi_sim.dt
 
 # plot data given to the network
-plt.subplot(1, 2, 1)
+plt.figure(figsize=(12, 4))
+plt.subplot(2, 1, 1)
 plt.plot(test_data[:n_test][0], color='C0')
 
 # plot the network predictions
+plt.subplot(2, 1, 2)
 plt.plot(timesteps, loihi_sim.data[nengo_output])
-plt.legend(["%d" % i for i in range(10)], loc="lower left")
+plt.legend([str(j) for j in range(2)], loc="upper left")
 plt.suptitle("Output predictions")
 plt.xlabel("Timestep")
 plt.ylabel("Probability")
