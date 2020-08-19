@@ -498,9 +498,10 @@ with nengo_loihi.Simulator(net, remove_passthrough=False) as loihi_sim:
 timesteps = loihi_sim.trange() / loihi_sim.dt
 
 # plot data given to the network
-plt.figure(figsize=(12, 4))
-plt.subplot(2, 1, 1)
-plt.plot(test_data[:n_test][0], color='C0')
+a = np.array([])
+for i in range(n_test):
+    a = np.concatenate((a, test_data[i][0]), axis=0)
+plt.plot(a, color='C0')
 
 # plot the network predictions
 plt.subplot(2, 1, 2)
