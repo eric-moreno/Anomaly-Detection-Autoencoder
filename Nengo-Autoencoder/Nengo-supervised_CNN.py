@@ -326,10 +326,11 @@ def is_spiking_type(neuron_type):
 
 
 # test the trained network with normal ReLU neurons
-
+"""
 mean_rates, plot_no = run_network(activation=nengo.RectifiedLinear(), n_steps=50, plot_idx=plot_no)
 plt.savefig(outdir + '/%s.jpg' % plot_no)
 plot_no += 1
+"""
 
 # test the trained network using Nengo spiking neurons
 """
