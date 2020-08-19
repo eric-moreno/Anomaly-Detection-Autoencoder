@@ -2,7 +2,7 @@
 path_wd = .
 dataset_path = .
 runlabel = test
-filename_ann = autoencoder2SNN
+filename_ann = autoencoder2SNN_loihi
 
 [tools]
 evaluate_ann = True
@@ -11,9 +11,9 @@ normalize = False
 
 [simulation]
 simulator = loihi
-duration = 20
+duration = 10
 dt = 1
-num_to_test = 10
+num_to_test = 100
 batch_size = 10
 reset_between_nth_sample = 1
 keras_backend = tensorflow
