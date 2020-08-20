@@ -48,8 +48,10 @@ def main(args):
     noise_samples_3 = load_3['noise_samples']['%s_strain'%(str(detector).lower())][:int(datapoints)]
     injection_samples_3 = load_3['injection_samples']['%s_strain'%(str(detector).lower())][:int(datapoints)]
     del load_1, load_2, load_3
-    data = np.concatenate((injection_samples_1, injection_samples_2, injection_samples_3, noise_samples_1, noise_samples_2 ,noise_samples_3))
-    truth = np.concatenate((np.ones(int(datapoints*3)), np.zeros(int(datapoints*3))))
+    data_train = np.concatenate((noise_samples_1, noise_samples_2))
+    truth_train = np.zeros(int(datapoints*2))
+    data_test = np.concatenate((noise_samples_3, injection_samples_3))
+    truth_test = np.concatenate((np.zeros(datapoints), np.ones(datapoints)))
 
     del noise_samples_1, noise_samples_2 ,noise_samples_3, injection_samples_1, injection_samples_2, injection_samples_3
     
@@ -66,17 +68,30 @@ def main(args):
         print('Filtering data with whitening and bandpass')
         print('Sample Frequency: %s Hz'%(freq))
         #randomly distributes GW between (0.2, 0.8) seconds into the event
-        x = [filters(sample, freq)[index:index+2048] for sample, index in zip(data, np.random.randint(9625,10854, size=len(data)))]
+        #x = [filters(sample, freq)[index:index+2048] for sample, index in zip(data, np.random.randint(9625,10854, size=len(data)))]
+        x_train = [filters(sample, freq) for sample in data_train]
         print('Done!')
+
+    if bool(int(filtered)):
+        print('Filtering data with whitening and bandpass')
+        print('Sample Frequency: %s Hz'%(freq))
+        #randomly distributes GW between (0.2, 0.8) seconds into the event
+        #x = [filters(sample, freq)[index:index+2048] for sample, index in zip(data, np.random.randint(9625,10854, size=len(data)))]
+        x_test = [filters(sample, freq) for sample in data_test]
+        print('Done!')
+    
     # Normalize the data
     scaler = MinMaxScaler()
-    X_transformed = scaler.fit_transform(x)
+    X_train_transformed = scaler.fit_transform(x_test)
+    X_test_transformed = scaler.transform(x_train)
     scaler_filename = "%s/scaler_data_%s"%(outdir, detector)
     joblib.dump(scaler, scaler_filename)
     
     hf = h5.File('%s/%s.h5'%(outdir, filename), 'w')
-    hf.create_dataset('data', data=X_transformed)
-    hf.create_dataset('truth', data=truth)
+    hf.create_dataset('noise', data=X_train_transformed)
+    hf.create_dataset('noise_truth', data=truth_train)
+    hf.create_dataset('test', data=X_test_transformed)
+    hf.create_dataset('test_truth', data=truth_test)
     hf.close()
     
 
