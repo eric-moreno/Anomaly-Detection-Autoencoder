@@ -4,24 +4,33 @@ import os
 import collections
 import warnings
 
-import matplotlib.pyplot as plt
 import nengo
 import nengo_dl
+import nengo_loihi
 import numpy as np
 import tensorflow as tf
 import h5py as h5
-import joblib
+import matplotlib.pyplot as plt
 from gwpy.timeseries import TimeSeries
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, roc_curve, auc
 from sklearn.utils.multiclass import unique_labels
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import MinMaxScaler
-
-from keras.layers import Input, Dense, Reshape, MaxPooling1D, MaxPooling2D, Conv1D, Conv2D, Flatten, AveragePooling1D
-
+from keras.layers import Input, Dense, Reshape, Conv2D, Flatten
 from keras.models import Model
 
-import nengo_loihi
+
+def plot_roc_corve(y_true, y_pred):
+    """ This function plots the ROC curve. """
+    plt.figure()
+    fpr, tpr, thresholds = roc_curve(y_true, y_pred)
+    plt.plot(fpr, tpr, lw=2, label='%s (auc = %0.2f)' % ('Nengo Loihi', auc(fpr, tpr)))
+    plt.xlim([1e-4, 1])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.xscale('log')
+    plt.title('LIGO Supervised GW-Detection')
+    plt.legend(loc="lower right")
 
 
 def plot_confusion_matrix(y_true, y_pred, classes, normalize=False, title=None, cmap=plt.cm.Blues):
@@ -79,52 +88,26 @@ def print_neurons_type(converter_nengo):
 # Ignore NengoDL warning about no GPU
 warnings.filterwarnings("ignore", message="No GPU", module="nengo_dl")
 
-# The results in this training should be reproducible across many random seeds.
-# However, some seed values may cause problems, particularly in the `to-spikes` layer
-# where poor initialization can result in no information being sent to the chip.
-# We set the seed to ensure that good results are reproducible without having to re-train.
-# np.random.seed(0)
-# tf.random.set_seed(0)
-
+# Create output directory where the results will be saved
 outdir = "Outputs"
+os.system('mkdir ' + outdir)
 
-detector = "L1"
-freq = 2
-filtered = 1
-timesteps = 100
-os.system(f'mkdir {outdir}')
-
-# counter of plots to save
+# Counter of plots to save
 plot_no = 0
 
 # Load train and test data
 load = h5.File('../../dataset/240k_1sec_L1.h5', 'r')
-
-# Define frequency in Hz instead of KHz
-if int(freq) == 2:
-    freq = 2048
-elif int(freq) == 4:
-    freq = 4096
-else:
-    print(f'Given frequency {freq}kHz is not supported. Correct values are 2 or 4kHz.')
+X_train = load['data'][:]
 
 datapoints = 120000
-
-gw = np.concatenate((np.zeros(datapoints), np.ones(datapoints)))
-noise = np.concatenate((np.ones(datapoints), np.zeros(datapoints)))
+gw = np.concatenate((np.ones(datapoints), np.zeros(datapoints)))
+noise = np.concatenate((np.zeros(datapoints), np.ones(datapoints)))
 targets = np.transpose(np.array([gw, noise]))
 
-X_train = load['data'][:]
-# splitting the train / test data in ratio 80:20
-train_data, test_data, train_truth, test_truth = train_test_split(X_train, targets, test_size=0.2)
-
+# Splitting the train / test data in ratio 80:20
+train_data, test_data, train_truth, test_truth = train_test_split(X_train, targets, test_size=0.2, random_state=42)
 class_names = np.array(['noise', 'GW'], dtype=str)
-
-# Normalize the data
-# scaler = MinMaxScaler()
-# train_data = scaler.fit_transform(noise_samples)
-# scaler_filename = f"{outdir}/scaler_data_{detector}"
-# joblib.dump(scaler, scaler_filename)
+del X_train, targets
 
 # Reshape inputs
 train_data = train_data.reshape((train_data.shape[0], 1, -1))
@@ -139,7 +122,6 @@ print("Test labels data shape:", test_truth.shape)
 # Define the model
 inp = Input(shape=(train_data.shape[2],), name="input")
 
-
 x = Reshape((train_data.shape[2], 1, 1))(inp)
 
 # transform input signal to spikes using trainable off-chip layer
@@ -147,27 +129,19 @@ to_spikes_layer = Conv2D(16, (4, 1), activation=tf.nn.relu, use_bias=False)
 to_spikes = to_spikes_layer(x)
 
 # on-chip layers
-L1_layer = Conv2D(16, (4, 1), activation=tf.nn.relu, use_bias=False)
+L1_layer = Conv2D(16, (4, 1), strides=4, activation=tf.nn.relu, use_bias=False)
 L1 = L1_layer(to_spikes)
 
-x = MaxPooling2D((2, 1), strides=(4, 1))(L1)
+L2_layer = Conv2D(32, (4, 1), strides=4, activation=tf.nn.relu, use_bias=False)
+L2 = L2_layer(L1)
 
-L2_layer = Conv2D(32, (4, 1), activation=tf.nn.relu, use_bias=False)
-L2 = L2_layer(x)
+L3_layer = Conv2D(64, (4, 1), strides=4, activation=tf.nn.relu, use_bias=False)
+L3 = L3_layer(L2)
 
-x = MaxPooling2D((2, 1), strides=(4, 1))(L2)
+L4_layer = Conv2D(128, (8, 1), strides=4, activation=tf.nn.relu, use_bias=False)
+L4 = L4_layer(L3)
 
-L3_layer = Conv2D(64, (4, 1), activation=tf.nn.relu, use_bias=False)
-L3 = L3_layer(x)
-
-x = MaxPooling2D((4, 1), strides=(4, 1))(L3)
-
-L4_layer = Conv2D(128, (8, 1), activation=tf.nn.relu, use_bias=False)
-L4 = L4_layer(x)
-
-x = MaxPooling2D((4, 1), strides=(4, 1))(L4)
-
-x = Flatten()(x)
+x = Flatten()(L4)
 
 L5_layer = Dense(128, activation=tf.nn.relu, use_bias=False)
 L5 = L5_layer(x)
@@ -175,15 +149,18 @@ L5 = L5_layer(x)
 L6_layer = Dense(64, activation=tf.nn.relu, use_bias=False)
 L6 = L6_layer(L5)
 
-# since this final output layer has no activation function,
-# it will be converted to a `nengo.Node` and run off-chip
+# since this final output layer has no activation function, it will be converted to a `nengo.Node` and run off-chip
 output = Dense(units=2, name="output")(L6)
 
 model = Model(inputs=inp, outputs=output)
-model.compile(optimizer='adam', loss='mse')
+model.compile(optimizer='adam', loss='mse', metrics=['accuracy'])
 model.summary()
-# history = model.fit(train_data, train_truth, epochs=1, batch_size=16,
-#                         validation_split=0.2,).history
+
+# train the model in clear keras code
+"""
+history = model.fit(train_data, train_truth, epochs=1, batch_size=16, validation_split=0.2,).history
+"""
+del train_data, train_truth
 
 
 def train(params_file="./keras_to_loihi_params", epochs=1, **kwargs):
@@ -207,17 +184,19 @@ def train(params_file="./keras_to_loihi_params", epochs=1, **kwargs):
         sim.save_params(params_file)
 
 
-# train this network with normal ReLU neurons
-train(epochs=50, swap_activations={tf.nn.relu: nengo.RectifiedLinear()})
+# train the model in Nengo with normal ReLU neurons
+"""
+train(epochs=15, params_file="./keras_to_loihi_params_15epoch", swap_activations={tf.nn.relu: nengo.RectifiedLinear()})
+"""
 
 
 def run_network(
         activation,
-        params_file="./keras_to_loihi_params",
+        params_file="./keras_to_loihi_params_15epoch",
         n_steps=30,
         scale_firing_rates=1,
         synapse=None,
-        n_test=100,
+        n_test=1000,
         n_plots=1,
         plot_idx=-1
 ):
@@ -229,6 +208,11 @@ def run_network(
         synapse=synapse,
         max_to_avg_pool=True
     )
+
+    # set a low-pass filter value on all synapses in the network
+    if synapse is not None:
+        for conn in nengo_converter.net.all_connections:
+            conn.synapse = synapse
 
     print_neurons_type(nengo_converter)
 
@@ -243,7 +227,7 @@ def run_network(
                                           [L3_layer, nengo.Probe(nengo_converter.layers[L3])],
                                           [L4_layer, nengo.Probe(nengo_converter.layers[L4])],
                                           [L5_layer, nengo.Probe(nengo_converter.layers[L5])],
-                                          [L6_layer, nengo.Probe(nengo_converter.layers[L6])],])
+                                          [L6_layer, nengo.Probe(nengo_converter.layers[L6])]])
 
     # repeat inputs for some number of timesteps
     tiled_test_data = np.tile(test_data[:n_test], (1, n_steps, 1))
@@ -267,31 +251,37 @@ def run_network(
     predicted = np.array(test_predictions, dtype=int)
     correct = np.array(correct, dtype=int)
 
+    plot_roc_corve(correct, predicted)
+    plt.savefig(outdir + '/%s_ROC_curve_evaluation.jpg' % plot_idx)
+    plot_idx += 1
+
     # Plot normalized confusion matrix
     plot_confusion_matrix(correct, predicted, classes=class_names, normalize=True,
                           title='Normalized confusion matrix')
-    plt.savefig(outdir + f'/{plot_idx}_confusion_matrix.jpg')
+    plt.savefig(outdir + '/%s_confusion_matrix_evaluation.jpg' % plot_idx)
 
     # plot the results
     mean_rates = []
     for i in range(n_plots):
         plt.figure(figsize=(12, 6))
 
-        plt.subplot(1, 2, 1)
-        # TODO: add a plot of current input signal
-        # plt.title("Input signal")
-        # plt.axis("off")
+        plt.subplot(1, 3, 1)
+        if test_truth[i][0][0] == 1:
+            plot_label = 'gravitational wave'
+        else:
+            plot_label = 'noise'
+        plt.title('Sample number: %s\nLabel: %s' % (i, plot_label))
+        plt.xlabel("Timestep")
+        plt.plot(test_data[i][0], color='C0')
 
         n_layers = len(probes)
         mean_rates_i = []
         for j, layer in enumerate(probes.keys()):
             probe = probes[layer]
             plt.subplot(n_layers, 3, (j * 3) + 2)
-            plt.suptitle("Neural activities")
-
             outputs = data[probe][i]
 
-            # look at only at non-zero outputs
+            # look only at non-zero outputs
             nonzero = (outputs > 0).any(axis=0)
             outputs = outputs[:, nonzero] if sum(nonzero) > 0 else outputs
 
@@ -305,9 +295,11 @@ def run_network(
 
             if is_spiking_type(activation):
                 outputs *= 0.001
-                plt.ylabel("# of Spikes")
+                ylabel = "# of Spikes"
             else:
-                plt.ylabel("Firing rates (Hz)")
+                ylabel = "Firing rates (Hz)"
+
+            plt.suptitle("Neural activities\n%s" % ylabel)
 
             # plot outputs of first 100 neurons
             plt.plot(outputs[:, :100])
@@ -315,41 +307,46 @@ def run_network(
         mean_rates.append(mean_rates_i)
 
         plt.xlabel("Timestep")
-
         plt.subplot(1, 3, 3)
-        plt.title("Output predictions")
+        plt.title("Output predictions\nProbability")
         plt.plot(tf.nn.softmax(data[nengo_output][i]))
-        plt.legend([str(j) for j in range(10)], loc="upper left")
+        plt.legend([str(j) for j in range(2)], loc="upper left")
         plt.xlabel("Timestep")
-        plt.ylabel("Probability")
 
         plt.tight_layout()
 
     # take mean rates across all plotted examples
     mean_rates = np.array(mean_rates).mean(axis=0)
 
-    return mean_rates
+    return mean_rates, plot_idx
 
 
 def is_spiking_type(neuron_type):
     return isinstance(neuron_type, (nengo.LIF, nengo.SpikingRectifiedLinear))
 
 
-# test the trained networks on test set
-mean_rates = run_network(activation=nengo.RectifiedLinear(), n_steps=10, plot_idx=plot_no)
-plt.savefig(outdir + f'/{plot_no}.jpg')
+# test the trained network with normal ReLU neurons
+"""
+mean_rates, plot_no = run_network(activation=nengo.RectifiedLinear(), n_steps=50, plot_idx=plot_no)
+plt.savefig(outdir + '/%s.jpg' % plot_no)
 plot_no += 1
+"""
 
-# test the trained networks using spiking neurons
-run_network(activation=nengo.SpikingRectifiedLinear(), scale_firing_rates=100, synapse=0.005, plot_idx=plot_no)
-plt.savefig(outdir + f'/{plot_no}.jpg')
+# test the trained network using Nengo spiking neurons
+"""
+_, plot_no = run_network(activation=nengo.SpikingRectifiedLinear(), n_steps=50, 
+            plot_idx=plot_no, scale_firing_rates=5000, synapse=0.005)
+plt.savefig(outdir + '/%s.jpg' % plot_no)
 plot_no += 1
+"""
 
-# test the trained networks using spiking neurons
-run_network(activation=nengo_loihi.neurons.LoihiSpikingRectifiedLinear(), scale_firing_rates=100, synapse=0.005,
-            plot_idx=plot_no)
-plt.savefig(outdir + f'/{plot_no}.jpg')
+# test the trained networks using Loihi spiking neurons
+"""
+_, plot_no = run_network(activation=nengo_loihi.neurons.LoihiSpikingRectifiedLinear(), n_steps=50,
+             plot_idx=plot_no, scale_firing_rates=5000, synapse=0.005)
+plt.savefig(outdir + '/%s.jpg' % plot_no)
 plot_no += 1
+"""
 
 
 def plot_activation(neurons, min, max, **kwargs):
@@ -366,15 +363,17 @@ def plot_activation(neurons, min, max, **kwargs):
 plt.figure(figsize=(10, 3))
 plot_activation(nengo.RectifiedLinear(), -100, 1000)
 plot_activation(nengo_loihi.neurons.LoihiSpikingRectifiedLinear(), -100, 1000)
-plt.savefig(outdir + f'/{plot_no}.jpg')
+plt.savefig(outdir + '/%s.jpg' % plot_no)
 plot_no += 1
 
 plt.figure(figsize=(10, 3))
 plot_activation(nengo.LIF(), -4, 40)
 plot_activation(nengo_loihi.neurons.LoihiLIF(), -4, 40)
-plt.savefig(outdir + f'/{plot_no}.jpg')
+plt.savefig(outdir + '/%s.jpg' % plot_no)
 plot_no += 1
 
+# scale the firing rates basing on previous results
+"""
 target_mean = 200
 scale_firing_rates = {
     L1_layer: target_mean / mean_rates[0],
@@ -385,40 +384,46 @@ scale_firing_rates = {
     L6_layer: target_mean / mean_rates[5],
 }
 
-# test the trained networks using spiking neurons
-run_network(
+# test the trained networks using Loihi spiking neurons
+_, plot_no = run_network(
     activation=nengo_loihi.neurons.LoihiSpikingRectifiedLinear(),
     scale_firing_rates=scale_firing_rates,
-    synapse=0.005, plot_idx=plot_no
+    synapse=0.005, plot_idx=plot_no, n_steps=50
 )
-plt.savefig(outdir + f'/{plot_no}.jpg')
+plt.savefig(outdir + '/%s.jpg' % plot_no)
 plot_no += 1
+"""
 
-# train this network with normal ReLU neurons
+# train this network with Loihi spiking neurons on low firing rate
+"""
 train(
-    params_file="./keras_to_loihi_loihineuron_params",
-    epochs=50,
+    params_file="./keras_to_loihi_neuron_params_15epoch",
+    epochs=25,
     swap_activations={tf.nn.relu: nengo_loihi.neurons.LoihiSpikingRectifiedLinear()},
     scale_firing_rates=100,
 )
+"""
 
-# test the trained networks using spiking neurons
-run_network(
+# test the trained networks using Loihi spiking neurons
+"""
+_, plot_no = run_network(
     activation=nengo_loihi.neurons.LoihiSpikingRectifiedLinear(),
-    scale_firing_rates=100,
-    params_file="./keras_to_loihi_loihineuron_params",
-    synapse=0.005, plot_idx=plot_no
+    scale_firing_rates=5000,
+    params_file="./keras_to_loihi_loihineuron_params_15epoch",
+    synapse=0.005, plot_idx=plot_no, n_steps=50
 )
-plt.savefig(outdir + f'/{plot_no}.jpg')
+plt.savefig(outdir + '/%s.jpg' % plot_no)
 plot_no += 1
+"""
 
-pres_time = 0.03  # how long to present each input, in seconds
-n_test = 1  # how many samples to test
+# Prepare the model to run on-chip
+pres_time = 0.06  # how long to present each input, in seconds
+n_test = 200  # how many samples to test
 
 # convert the keras model to a nengo network
 nengo_converter = nengo_dl.Converter(
     model,
-    scale_firing_rates=400,
+    scale_firing_rates=5000,
     swap_activations={tf.nn.relu: nengo_loihi.neurons.LoihiSpikingRectifiedLinear()},
     synapse=0.005,
     max_to_avg_pool=True,
@@ -431,7 +436,7 @@ nengo_output = nengo_converter.outputs[output]
 
 # build network, load in trained weights, save to network
 with nengo_dl.Simulator(net) as nengo_sim:
-    nengo_sim.load_params("keras_to_loihi_loihineuron_params")
+    nengo_sim.load_params("keras_to_loihi_params_15epoch")
     nengo_sim.freeze_params(net)
 
 with net:
@@ -466,9 +471,8 @@ with net:
 
 print_neurons_type(nengo_converter)
 
-
-# build Nengo Loihi Simulator and run network
-with nengo_loihi.Simulator(net) as loihi_sim:
+# build Nengo Loihi Simulator and run network in simulation or on Intel Loihi Hardware
+with nengo_loihi.Simulator(net, remove_passthrough=False) as loihi_sim:
     loihi_sim.run(n_test * pres_time)
 
     # get output (last timestep of each presentation period)
@@ -487,30 +491,39 @@ with nengo_loihi.Simulator(net) as loihi_sim:
     print("Predicted labels: ", predicted)
     print("Correct labels: ", correct)
 
-plt.figure(figsize=(12, 4))
+    plot_roc_corve(correct, predicted)
+    plt.savefig(outdir + '/ROC_curve_%s.jpg' % plot_no)
+    plot_no += 1
+
 timesteps = loihi_sim.trange() / loihi_sim.dt
 
 # plot data given to the network
-# TODO: add a plot of current input signal
+plt.figure(figsize=(12, 4))
+plt.subplot(2, 1, 1)
+a = np.array([])
+for i in range(n_test):
+    a = np.concatenate((a, test_data[i][0]), axis=0)
+plt.plot(a, color='C0')
 
 # plot the network predictions
+plt.subplot(2, 1, 2)
 plt.plot(timesteps, loihi_sim.data[nengo_output])
-plt.legend(["%d" % i for i in range(10)], loc="lower left")
+plt.legend([str(j) for j in range(2)], loc="upper left")
 plt.suptitle("Output predictions")
 plt.xlabel("Timestep")
 plt.ylabel("Probability")
-plt.savefig(outdir + f'/{plot_no}.jpg')
+plt.savefig(outdir + '/%s.jpg' % plot_no)
 plot_no += 1
 
 # Plot non-normalized confusion matrix
 plot_confusion_matrix(correct, predicted, classes=class_names,
                       title='Confusion matrix, without normalization')
-plt.savefig(outdir + f'/{plot_no}.jpg')
+plt.savefig(outdir + '/%s.jpg' % plot_no)
 plot_no += 1
 
 # Plot normalized confusion matrix
 plot_confusion_matrix(correct, predicted, classes=class_names, normalize=True,
                       title='Normalized confusion matrix')
 
-plt.savefig(outdir + f'/{plot_no}.jpg')
+plt.savefig(outdir + '/%s.jpg' % plot_no)
 plot_no += 1
