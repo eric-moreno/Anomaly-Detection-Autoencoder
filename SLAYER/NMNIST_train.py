@@ -8,7 +8,7 @@ import slayerSNN as snn
 import zipfile
 
 # Read SNN configuration from yaml file
-netParams = snn.params('network.yaml')
+netParams = snn.params('network_nmnist.yaml')
 
 # Extract NMNISTsmall dataset
 with zipfile.ZipFile('NMNISTsmall.zip') as zip_file:
