@@ -13,7 +13,7 @@ duration = 200
 dt = 1
 simulator = INI
 num_to_test = 1000
-batch_size = 10
+batch_size = 100
 reset_between_nth_sample = 1
 keras_backend = tensorflow
 
