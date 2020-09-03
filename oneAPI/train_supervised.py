@@ -15,7 +15,7 @@ def hls4ml_deployment(model, test_data, test_truth):
                                                            output_dir='test')
     hls_model.compile(batch_size=1)
     y_hls = hls_model.predict(test_data.astype(np.float32))
-    print(f"Y hls: {y_hls}")
+    # print(f"Y hls: {y_hls}")
     from sklearn.metrics import accuracy_score
     print("Keras  Accuracy: {}".format(
         accuracy_score(np.argmax(test_truth, axis=1), np.argmax(model.predict(test_data), axis=1))))
@@ -54,7 +54,7 @@ def main():
     model.summary()
 
     # fit the model to the data
-    nb_epochs = 300
+    nb_epochs = 1
     batch_size = 16
     earlyStopping = EarlyStopping(monitor='val_loss', patience=10, verbose=0, mode='min')
     mcp_save = ModelCheckpoint('%s/best_model.hdf5' % outdir, save_best_only=True, monitor='val_loss', mode='min')
@@ -69,7 +69,7 @@ def main():
     ax.set_ylabel('Loss (mse)')
     ax.set_xlabel('Epoch')
     ax.legend(loc='upper right')
-    plt.savefig('%s/loss.jpg' % outdir)
+    plt.savefig('%s/loss.png' % outdir)
 
     hls4ml_deployment(model, test_data, test_truth)
 
