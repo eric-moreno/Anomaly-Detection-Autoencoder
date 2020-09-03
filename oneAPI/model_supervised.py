@@ -1,7 +1,8 @@
 import tensorflow as tf
 
-from keras.layers import Input, Dense, Conv1D, MaxPooling1D, Flatten, Reshape, Conv2D
+from keras.layers import Input, Dense, Conv1D, MaxPooling1D, Flatten, Reshape, Conv2D, Activation
 from keras.models import Model
+from tensorflow.keras.models import Sequential
 
 
 def autoencoder_ConvDNN(X):
@@ -61,11 +62,16 @@ def autoencoder_ConvDNN_Nengo(X):
 
 
 def autoencoder_DNN(X):
-    inputs = Input(shape=(X.shape[1],))
-    x = Dense(1024, activation='relu')(inputs)
-    x = Dense(512, activation='relu')(x)
-    x = Dense(128, activation='relu')(x)
-    x = Dense(32, activation='relu')(x)
-    output = Dense(1, activation='relu')(x)
-    model = Model(inputs=inputs, outputs=output)
+    model = Sequential()
+    model.add(Dense(1024, input_shape=(X.shape[1],), name='fc1', kernel_initializer='lecun_uniform'))
+    model.add(Activation(activation='relu', name='relu1'))
+    model.add(Dense(512, name='fc2', kernel_initializer='lecun_uniform'))
+    model.add(Activation(activation='relu', name='relu2'))
+    model.add(Dense(128, name='fc3', kernel_initializer='lecun_uniform'))
+    model.add(Activation(activation='relu', name='relu3'))
+    model.add(Dense(32, name='fc4', kernel_initializer='lecun_uniform'))
+    model.add(Activation(activation='relu', name='relu4'))
+    model.add(Dense(1, name='output', kernel_initializer='lecun_uniform'))
+    model.add(Activation(activation='softmax', name='softmax'))
+
     return model
