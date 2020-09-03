@@ -1,9 +1,10 @@
 """ Set of autoencoders models used for anomaly detection. """
 
 from keras.layers import Input, Dense, LSTM, TimeDistributed, RepeatVector, Conv1D, \
-    MaxPooling1D, UpSampling1D, Flatten, Reshape, GRU
+    MaxPooling1D, UpSampling1D, Flatten, Reshape, GRU, Activation
 from keras.models import Model
 from keras import regularizers
+from tensorflow.keras.models import Sequential
 
 
 def autoencoder_LSTM(X):
@@ -161,7 +162,8 @@ def autoencoder_DNN(X):
     x = Dense(int(X.shape[1] / 2), activation='relu')(x)
     x = Dense(int(X.shape[1] / 10), activation='relu')(x)
     x = Dense(int(X.shape[1] / 2), activation='relu')(x)
-    x = Dense(X.shape[1], activation='relu')(x)
-    output = Reshape((X.shape[1], 1))(x)
+    output = Dense(X.shape[1])(x)
+    output = Activation(activation='relu')(output)
     model = Model(inputs=inputs, outputs=output)
+
     return model
