@@ -1,16 +1,14 @@
-""" Set of autoencoders models used for anomaly detection. """
+""" Set of autoencoders models used for anomaly detection in unsupervised learning. """
 
-from keras.layers import Input, Dense, LSTM, TimeDistributed, RepeatVector, Conv1D, \
-    MaxPooling1D, UpSampling1D, Flatten, Reshape, GRU, Activation
+from keras.layers import Input, Dense, LSTM, TimeDistributed, RepeatVector, Conv1D, MaxPooling1D, UpSampling1D, \
+    Flatten, Reshape, GRU, Activation
 from keras.models import Model
 from keras import regularizers
-from tensorflow.keras.models import Sequential
 
 
 def autoencoder_LSTM(X):
     inputs = Input(shape=(X.shape[1], X.shape[2]))
-    L1 = LSTM(32, activation='relu', return_sequences=True,
-              kernel_regularizer=regularizers.l2(0.00))(inputs)
+    L1 = LSTM(32, activation='relu', return_sequences=True, kernel_regularizer=regularizers.l2(0.00))(inputs)
     L2 = LSTM(8, activation='relu', return_sequences=False)(L1)
     L3 = RepeatVector(X.shape[1])(L2)
     L4 = LSTM(8, activation='relu', return_sequences=True)(L3)
@@ -22,8 +20,7 @@ def autoencoder_LSTM(X):
 
 def autoencoder_GRU(X):
     inputs = Input(shape=(X.shape[1], X.shape[2]))
-    L1 = GRU(32, activation='relu', return_sequences=True,
-             kernel_regularizer=regularizers.l2(0.00))(inputs)
+    L1 = GRU(32, activation='relu', return_sequences=True, kernel_regularizer=regularizers.l2(0.00))(inputs)
     L2 = GRU(8, activation='relu', return_sequences=False)(L1)
     L3 = RepeatVector(X.shape[1])(L2)
     L4 = GRU(8, activation='relu', return_sequences=True)(L3)
@@ -132,7 +129,6 @@ def autoencoder_ConvLSTM(X):
 
 
 def autoencoder_DeepConv(X):
-    ### Use autoencoder_ConvDNN instead ###
     inputs = Input(shape=(X.shape[1], X.shape[2]))
     x = Conv1D(16, 16, activation="relu", padding="same")(inputs)
     x = MaxPooling1D(4, padding="same")(x)

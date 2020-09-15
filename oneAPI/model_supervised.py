@@ -1,8 +1,8 @@
-import tensorflow as tf
+""" Set of models used for anomaly detection in supervised learning. """
 
+import tensorflow as tf
 from keras.layers import Input, Dense, Conv1D, MaxPooling1D, Flatten, Reshape, Conv2D, Activation
-from keras.models import Model
-from tensorflow.keras.models import Sequential
+from keras.models import Model, Sequential
 
 
 def autoencoder_ConvDNN(X):

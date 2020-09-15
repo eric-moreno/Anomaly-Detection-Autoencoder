@@ -47,10 +47,10 @@ def main():
     nb_epochs = 1
     batch_size = 1024
     early_stop = EarlyStopping(monitor='val_loss', patience=10, verbose=0, mode='min')
-    mcp_save = ModelCheckpoint(f'{outdir}/best_model.hdf5', save_best_only=True, monitor='val_loss', mode='min')
+    mcp_save = ModelCheckpoint(outdir + '/best_model.hdf5', save_best_only=True, monitor='val_loss', mode='min')
     history = model.fit(X_train, X_train, epochs=nb_epochs, batch_size=batch_size,
                         validation_split=0.2, callbacks=[early_stop, mcp_save]).history
-    model.save(f'{outdir}/last_model.hdf5')
+    model.save(outdir + '/last_model.hdf5')
 
     fig, ax = plt.subplots(figsize=(14, 6), dpi=80)
     ax.plot(history['loss'], 'b', label='Train', linewidth=2)
@@ -59,7 +59,7 @@ def main():
     ax.set_ylabel('Loss (mse)')
     ax.set_xlabel('Epoch')
     ax.legend(loc='upper right')
-    plt.savefig(f'{outdir}/loss.png')
+    plt.savefig(outdir + '/loss.png')
 
     hls4ml_deployment(model, X_train, X_train)
 

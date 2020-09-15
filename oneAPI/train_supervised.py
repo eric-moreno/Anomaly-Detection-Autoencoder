@@ -15,7 +15,7 @@ def hls4ml_deployment(model, test_data, test_truth):
                                                            output_dir='test')
     hls_model.compile(batch_size=1)
     y_hls = hls_model.predict(test_data.astype(np.float32))
-    # print(f"Y hls: {y_hls}")
+    # print("Y hls: ", y_hls)
     from sklearn.metrics import accuracy_score
     print("Keras  Accuracy: {}".format(
         accuracy_score(np.argmax(test_truth, axis=1), np.argmax(model.predict(test_data), axis=1))))
