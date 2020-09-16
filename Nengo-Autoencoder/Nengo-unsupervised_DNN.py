@@ -1,4 +1,6 @@
 """ Unupervised anomaly detection in LIGO data with Spiking Neural Networks running on Loihi """
+import matplotlib
+matplotlib.use('Agg')
 
 import os
 import collections
@@ -176,7 +178,6 @@ def train(params_file="./keras_to_loihi_params_unsupervised", epochs=1, **kwargs
 
         # save the parameters to file
         sim.save_params(params_file)
-
 
 # train this network with normal ReLU neurons
 train(epochs=10, swap_activations={tf.nn.relu: nengo.RectifiedLinear()})
