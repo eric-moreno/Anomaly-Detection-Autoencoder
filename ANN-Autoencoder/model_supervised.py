@@ -1,5 +1,4 @@
 from numpy.random import seed
-from tensorflow import set_random_seed
 import tensorflow as tf
 #tf.logging.set_verbosity(tf.logging.ERROR) 
 
@@ -15,9 +14,9 @@ def autoencoder_ConvDNN(X):
     L3 = Conv1D(32, 4, activation="relu", dilation_rate=2)(L2)
     L4 = MaxPooling1D(2, stride=4)(L3) 
     L5 = Conv1D(64, 4, activation="relu", dilation_rate=2)(L4)
-    L6 = MaxPooling1D(4, stride=4)(L5)
+    L6 = MaxPooling1D(4, stride=2)(L5)
     L7 = Conv1D(128, 8, activation="relu", dilation_rate=2)(L6)
-    L8 = MaxPooling1D(4, stride=4)(L7)
+    L8 = MaxPooling1D(4, stride=2)(L7)
     x = Flatten()(L8)
     x = Dense(128, activation='relu')(x)
     x = Dense(64, activation='relu')(x)

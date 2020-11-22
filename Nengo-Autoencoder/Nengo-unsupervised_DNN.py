@@ -91,7 +91,7 @@ os.system(f'mkdir {outdir}')
 plot_no = 0
 
 # Load train and test data
-load = h5.File('../../dataset/unsupervised_uncropped_GWat5sec.h5', 'r')
+load = h5.File('../../dataset/default_BIGsim_testtrain.h5', 'r')
 
 # Define frequency in Hz instead of KHz
 if int(freq) == 2:
@@ -104,22 +104,22 @@ else:
 datapoints = 120000
 
 # Selecting noise events in dataset 
-train_data = load['noise'][:10000]
-test_data = load['test'][:, 9216:11264]
-test_truth = load['test_truth'][:]
+train_data = load['noise'][:30000, :16000]
+test_data = load['injection'][:1100, 9216:11264]
+test_truth = np.ones(1100)
 del load 
 
 AE_timestep = 200
 
 test_truth = np.array([[i]*int(freq/AE_timestep) for i in test_truth]).reshape(-1, 1)
 class_names = np.array(['noise', 'GW'], dtype=str)
-
+'''
 x = []
 for event in range(len(train_data)):
     if train_data[event].shape[0] % AE_timestep != 0:
         x.append(train_data[event][:-1 * int(train_data[event].shape[0] % AE_timestep)])
 train_data = np.array(x)
-
+'''
 x = []
 for event in range(len(test_data)):
     if test_data[event].shape[0] % AE_timestep != 0:
@@ -164,7 +164,7 @@ def train(params_file="./keras_to_loihi_params_unsupervised", epochs=1, **kwargs
 
     print_neurons_type(converter)
 
-    with nengo_dl.Simulator(converter.net, seed=0, minibatch_size=100, device="/gpu:0") as sim:
+    with nengo_dl.Simulator(converter.net, seed=0, minibatch_size=2048, device="/gpu:0") as sim:
         sim.compile(
             optimizer=tf.keras.optimizers.Adam(),
             loss={converter.outputs[output]: tf.keras.losses.MeanSquaredError()},
@@ -178,9 +178,10 @@ def train(params_file="./keras_to_loihi_params_unsupervised", epochs=1, **kwargs
 
         # save the parameters to file
         sim.save_params(params_file)
-
+        
 # train this network with normal ReLU neurons
-train(epochs=10, swap_activations={tf.nn.relu: nengo.RectifiedLinear()})
+train(epochs=5, swap_activations={tf.nn.relu: nengo.RectifiedLinear()})
+sys.exit()
 
 def determine_treshold(
         activation,
@@ -304,6 +305,13 @@ def run_network(
     predicted = data[nengo_output][:, -1]
     loss_fn = MeanSquaredError(reduction='none')
     losses = loss_fn(test_data_shuffled[:n_test], predicted.reshape(predicted.shape[0], predicted.shape[1], 1))
+    
+    for i in range(10): 
+        plt.figure(figsize=(12, 6))
+        plt.plot(losses[i])
+        plt.savefig('test'+str(i)+'.png')
+    sys.exit()
+    
     averaged_losses = np.mean(losses, axis=1).reshape(n_test, -1)
     max_losses = [np.max(event) for event in averaged_losses]
     

@@ -7,6 +7,7 @@ import joblib
 import seaborn as sns
 import matplotlib.pyplot as plt
 import h5py as h5
+import setGPU
 from sklearn.preprocessing import MinMaxScaler
 from gwpy.timeseries import TimeSeries
 from keras.callbacks import EarlyStopping, ModelCheckpoint
@@ -44,7 +45,7 @@ def main(args):
     os.system(f'mkdir {outdir}')
 
     # Load train and test data
-    load = h5.File('../../dataset/default_simulated.hdf', 'r')
+    load = h5.File('../../dataset/default_BIGsim_testtrain_H1.h5', 'r')
 
     # Define frequency in Hz instead of KHz
     if int(freq) == 2:
@@ -70,19 +71,23 @@ def main(args):
     scaler_filename = f"{outdir}/scaler_data_{detector}"
     joblib.dump(scaler, scaler_filename)
     '''
-    X_train = np.load('train_preprocessed_160k.npy')[:80000]
+    X_train = load['noise'][:300000, :16092]
     # Data augmentation needed if not enough data
     # X_train = augmentation(X_train, timesteps)
-
     # Trim dataset to be batch-friendly and reshape into timestep format
+    print(X_train.shape)
+    del load
     '''
     x = []
     for event in range(len(X_train)):
         if X_train[event].shape[0] % timesteps != 0:
             x.append(X_train[event][:-1 * int(X_train[event].shape[0] % timesteps)])
+    del X_train
     X_train = np.array(x)
-    '''
+    print(X_train.shape)
     
+    del x
+    '''
     # Reshape inputs for LSTM [samples, timesteps, features]
     X_train = X_train.reshape(-1, timesteps, 1)
     print("Training data shape:", X_train.shape)
@@ -94,9 +99,9 @@ def main(args):
 
     # Fit the model to the data
     nb_epochs = 300
-    batch_size = 1024
+    batch_size = 2048
     early_stop = EarlyStopping(monitor='val_loss', patience=10, verbose=0, mode='min')
-    mcp_save = ModelCheckpoint(f'{outdir}/best_model.hdf5', save_best_only=True, monitor='val_loss', mode='min')
+    mcp_save = ModelCheckpoint(f'{outdir}/best_model_H1.hdf5', save_best_only=True, monitor='val_loss', mode='min')
     history = model.fit(X_train, X_train, epochs=nb_epochs, batch_size=batch_size,
                         validation_split=0.2, callbacks=[early_stop, mcp_save]).history
     model.save(f'{outdir}/last_model.hdf5')
@@ -122,7 +127,7 @@ if __name__ == "__main__":
     parser.add_argument("--freq", help="Sampling frequency of detector in KHz",
                         action='store', dest='freq', default=2)
     parser.add_argument("--filtered", help="Apply LIGO's bandpass and whitening filters",
-                        action='store', dest='filtered', default=1)
+                        action='store', dest='filtered', default=0)
     parser.add_argument("--timesteps", help="Number of timesteps passed to model",
                         action='store', dest='timesteps', default=100)
 
