@@ -315,7 +315,44 @@ def main(args):
     else:
         return print(f'Given frequency {freq}kHz is not supported. Correct values are 2 or 4kHz.')
     
-    datapoints = 25000
+    datapoints = 200
+    
+    ##### Evaluate Supervised methods ######
+    
+    gw = np.concatenate((np.zeros(datapoints), np.ones(datapoints)))
+    noise = np.concatenate((np.ones(datapoints), np.zeros(datapoints)))
+    targets = np.transpose(np.array([gw, noise]))
+    train_truth, test_truth = train_test_split(targets, test_size=0.2, random_state=42)
+    
+    prediction_H1 = evaluate_supervised_methods(load_H1, datapoints, 'H1', outdir)
+    prediction_L1 = evaluate_supervised_methods(load_L1, datapoints, 'L1', outdir)
+    
+    base_pred_H1 = []
+    base_pred_L1 = []
+
+    for prediction in prediction_H1[0]: 
+        
+        if prediction[0] > 0.5: 
+            base_pred_H1.append(1)
+        else: 
+            base_pred_H1.append(0)
+    
+    for prediction in prediction_L1[0]: 
+        if prediction[0] > 0.5: 
+            base_pred_L1.append(1)
+        else: 
+            base_pred_L1.append(0)
+            
+    print(np.corrcoef([base_pred_L1, base_pred_H1])) #correlation coefficient
+    names_supervised = ['CNN trained w/ BBH', 'CNN trained w/ BNS']
+    predictions_native = []
+    predictions_alt = []
+    for i in range(len(prediction_L1[0])): 
+        predictions_native.append([(prediction_L1[0][i][0] + prediction_H1[0][i][0])/2, (prediction_L1[0][i][1] + prediction_H1[0][i][1])/2])
+        predictions_alt.append([(prediction_L1[1][i][0] + prediction_H1[1][i][0])/2, (prediction_L1[1][i][1] + prediction_H1[1][i][1])/2])
+    
+    predictions = np.array([predictions_native, predictions_alt])
+    
 
     ##### Evaluate Unsupervised methods ######
     
@@ -358,10 +395,36 @@ def main(args):
         print('Done!')
     
     
-    ##### Plotting unsupervised methods ######
+    ##### Plotting both methods ######
     import matplotlib.pyplot as plt
     f, ax = plt.subplots(figsize=(10, 10))
     lw = 2
+    
+    
+    for name, pred in zip(names_supervised, predictions): 
+        print('Determining performance for: %s'%(name))
+        print(np.shape(test_truth[:, 1]))
+        print(pred)
+        fpr, tpr, thresholds = roc_curve(test_truth[:, 1], pred[:, 1])
+        
+        #### For paper - need to print certain working points ####
+        
+        index_FPR_1percent = 0 
+        for i in fpr: 
+            if i < 0.01: 
+                index_FPR_1percent+=1
+        print('TPR for classifier at FPR=0.01: %s'%(tpr[index_FPR_1percent]))
+
+        index_FPR_10percent = 0 
+        for i in fpr: 
+            if i < 0.0001: 
+                index_FPR_10percent+=1
+        print('TPR for classifier at FPR=0.0001: %s'%(tpr[index_FPR_10percent]))
+        
+        ax.plot(fpr, tpr, lw=2, label='%s (auc = %0.2f)'%(name, auc(fpr, tpr)))
+        print('Accuracy: %s'%(accuracy_score(np.argmax(test_truth, axis=-1), np.argmax(pred, axis=-1))))
+        print('Done!')
+    
     
     for FPRs, TPRs, name in zip(FPR_set, TPR_set, names_unsupervised):
         ax.plot(FPRs, TPRs,
@@ -387,6 +450,122 @@ def main(args):
     ax.set_title('LIGO Single-Detector BBH Detection')
     #sf.legend(loc="upper left", fontsize=9)
     f.savefig('%s/ROC_curve_log_BBHdataset_5e-5_400step_temp.jpg'%(outdir))
+    
+    
+    sys.exit()
+    ### Enable if needed - these are additional plots to check if methods are working in unsupervised learning approach###
+    
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt 
+    import matplotlib.ticker as plticker
+    
+    
+    X_test_graph = []
+    for i in range(len(1000)): 
+        X_test_graph.append([X_test_L1[i], X_test_H1[i]])
+            
+    print(np.shape(X_test_graph))
+    for n in range(20):
+        
+        f, ax = plt.subplots(figsize=(10, 6), nrows=2, ncols=1)
+        ax[0].xaxis.set_major_locator(plticker.MultipleLocator(base=0.5))
+        #ax[0].xaxis.set_minor_locator(plticker.MultipleLocator(base=0.5))
+        ax[0].tick_params(direction='in', axis='both', which='major', labelsize=10, length=12 )
+        ax[0].tick_params(direction='in', axis='both', which='minor' , length=6)
+        ax[0].xaxis.set_ticks_position('both')
+        ax[0].yaxis.set_ticks_position('both')
+        ax[0].set_xticklabels([])
+        ax[0].grid(which='minor', alpha=0.5, axis='y', linestyle='dotted')
+        ax[0].grid(which='major', alpha=0.9, linestyle='dotted')
+        leg0 = ax[0].legend(borderpad=1, frameon=False, loc=2, fontsize=10)
+        leg0._legend_box.align = "left"
+        ax[1].xaxis.set_major_locator(plticker.MultipleLocator(base=0.5))
+        #ax[1].xaxis.set_minor_locator(plticker.MultipleLocator(base=0.5))
+        ax[1].tick_params(direction='in', axis='both', which='major', labelsize=10, length=12 )
+        ax[1].tick_params(direction='in', axis='both', which='minor' , length=6)
+        ax[1].xaxis.set_ticks_position('both')
+        ax[1].yaxis.set_ticks_position('both')    
+        ax[1].grid(which='minor', alpha=0.5, axis='y', linestyle='dotted')
+        ax[1].grid(which='major', alpha=0.9, linestyle='dotted')
+        leg1 = ax[1].legend(borderpad=1, frameon=False, loc=2)
+        leg1._legend_box.align = "left"
+        ax[0].set_xlim(0, 8)
+        ax[1].set_xlim(0, 8)
+        ax[0].set_ylim(0, 0.07)
+        ax[1].set_ylim(0, 0.07)
+        
+        random_samples = RandSample(range(0, len(X_test_graph)), 2)
+        for num, random_sample in zip(range(len(random_samples)), random_samples): 
+            event_L1 = np.array(X_test_graph)[random_sample, 0, :16300]
+            event_H1 = np.array(X_test_graph)[random_sample, 1, :16300]
+            print(np.shape(event_L1))
+            print(np.shape(event_H1))
+            event_L1 = event_L1.reshape(-1, int(args.timesteps), 1)
+            event_H1 = event_H1.reshape(-1, int(args.timesteps), 1)
+            time = random_sample
+            loss_fn = MeanSquaredError(reduction='none')
+
+            #model = load_model('%s/best_model_H1.hdf5'%(outdir))
+            model = load_model('../scalers/LSTM')
+            X_pred_L1 = model.predict(event_L1)
+            X_pred_H1 = model.predict(event_H1)
+            #threshold_0.1 = threshold_given_FPR(X_train[:, :-int(np.shape(X_train)[1]%timestep)], X_test[:, :-int(np.shape(X_test)[1]%timestep)], directory, timestep, FPR=0.1)
+            timing = [i*100/2048. for i in range(163)]
+            losses_L1 = loss_fn(event_L1, X_pred_L1).numpy()
+            losses_H1 = loss_fn(event_H1, X_pred_H1).numpy()
+            batch_loss_L1 = np.mean(losses_L1, axis=1)
+            batch_loss_H1 = np.mean(losses_H1, axis=1)
+            batch_loss = [h1 + l1 for h1, l1 in zip(batch_loss_H1, batch_loss_L1)]
+            
+            ax[num].plot(timing, batch_loss,  label='LSTM Autoencoder')
+            ax[num].axvline(5.5, label='GW Peak Intensity', color='green')
+            leg0 = ax[0].legend(borderpad=1, frameon=False, loc=2, fontsize=16)
+            leg0._legend_box.align = "left"
+            
+            ax[0].yaxis.set_major_locator(plticker.MultipleLocator(base=0.01))
+            
+            ax[1].yaxis.set_major_locator(plticker.MultipleLocator(base=0.01))
+            
+            #plt.xlabel('Timestep')
+            #plt.ylabel('Loss')
+            #plt.title('LSTM Autoencoder Output')
+            #plt.axhline(threshold, label='GW event threshold', color='red')
+            #plt.legend(loc='upper left')
+
+        ax[1].set_xlabel('Time (seconds)')
+        ax[0].set_ylabel('Loss')
+        ax[1].set_ylabel('Loss')
+        ax[0].set_title('LSTM Autoencoder Output')
+        plt.savefig('%s/loss/batchloss_%s.jpg'%(outdir,time))
+        
+    '''
+        X_pred_test = np.array(model.predict(event))
+        
+        fig, ax = plt.subplots(figsize=(14, 6), dpi=80)
+        ax.plot(event.reshape(-1)[int(2048*5.5) - 300:int(2048*5.5) + 300], label='truth')
+        ax.plot(X_pred_test.reshape(-1)[int(2048*5.5)- 300:int(2048*5.5) + 300], label='predict')
+        plt.legend(loc='upper left')
+        plt.title('LSTM Autoencoder')
+        plt.savefig('%s/middle30ms_%s.jpg'%(outdir,time))
+        
+        print(X_pred_test.shape)
+        X_pred_test = X_pred_test.reshape(X_pred_test.shape[0]*timesteps, X_pred_test.shape[2])
+        
+        #X_pred_train.index = train.index
+        Xtest = event.reshape(event.shape[0]*timesteps, event.shape[2])
+
+        X_pred_test = pd.DataFrame(X_pred_test)
+        scored_test = pd.DataFrame()
+        scored_test['Loss_mae'] = np.mean(np.abs(X_pred_test-Xtest), axis = 1)
+        #scored_test['Threshold'] = threshold
+        #scored_test['Anomaly'] = scored_test['Loss_mae'] > scored_test['Threshold']
+        #scored_test.plot(logy=True,  figsize=(16,9), ylim=[t/(1e2),threshold*(1e2)], color=['blue','red'])
+        scored_test.plot(logy=False,  figsize=(16,9), color=['blue','red'])
+        plt.axvline(5.5*2048, label='actual GW event', color='green') #Sampling rate of 2048 Hz with the event occuring 5.5 seconds into sample
+        plt.legend(loc='upper left')
+        plt.savefig('%s/test_threshold_%s_8sec.jpg'%(outdir, time))
+    '''
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
