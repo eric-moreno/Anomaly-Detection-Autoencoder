@@ -9,9 +9,9 @@ import matplotlib.pyplot as plt
 import h5py as h5
 import setGPU
 from sklearn.preprocessing import MinMaxScaler
-from gwpy.timeseries import TimeSeries
-from keras.callbacks import EarlyStopping, ModelCheckpoint
-from model import autoencoder_LSTM, autoencoder_ConvLSTM, autoencoder_ConvDNN, autoencoder_DNN, autoencoder_Conv, autoencoder_Conv2
+#from gwpy.timeseries import TimeSeries
+from keras.callbacks import EarlyStopping, ModelCheckpoint, Callback
+from model import autoencoder_LSTM, autoencoder_LSTM_big, autoencoder_LSTM_deep, autoencoder_ConvLSTM, autoencoder_ConvDNN, autoencoder_DNN, autoencoder_Conv, autoencoder_Conv2, autoencoder_Conv_paper, autoencoder_GRU
 
 sns.set(color_codes=True)
 
@@ -45,8 +45,8 @@ def main(args):
     os.system(f'mkdir {outdir}')
 
     # Load train and test data
-    load = h5.File('../../dataset/default_BIGsim_testtrain_H1.h5', 'r')
-
+    load = h5.File(f'../../dataset/default_BIGsim_testtrain_{detector}.h5', 'r')
+    
     # Define frequency in Hz instead of KHz
     if int(freq) == 2:
         freq = 2048
@@ -54,41 +54,15 @@ def main(args):
         freq = 4096
     else:
         return print(f'Given frequency {freq}kHz is not supported. Correct values are 2 or 4kHz.')
-    '''
-    noise_samples = load['noise_samples']['%s_strain' % (str(detector).lower())][:][:45000]
-
-    # With LIGO simulated data, the sample isn't pre-filtered so need to filter again.
-    # Real data is not filtered yet.
-    if bool(int(filtered)):
-        print('Filtering data with whitening and bandpass')
-        print(f'Sample Frequency: {freq} Hz')
-        x = [filters(sample, freq) for sample in noise_samples]
-        print('Filtering completed')
-
-    # Normalize the data
-    scaler = MinMaxScaler()
-    X_train = scaler.fit_transform(x)
-    scaler_filename = f"{outdir}/scaler_data_{detector}"
-    joblib.dump(scaler, scaler_filename)
-    '''
-    X_train = load['noise'][:300000, :16092]
+    
+    X_train = load['noise'][:1000, :16000]
+    del load 
     # Data augmentation needed if not enough data
     # X_train = augmentation(X_train, timesteps)
-    # Trim dataset to be batch-friendly and reshape into timestep format
-    print(X_train.shape)
-    del load
-    '''
-    x = []
-    for event in range(len(X_train)):
-        if X_train[event].shape[0] % timesteps != 0:
-            x.append(X_train[event][:-1 * int(X_train[event].shape[0] % timesteps)])
-    del X_train
-    X_train = np.array(x)
-    print(X_train.shape)
     
-    del x
-    '''
+    
     # Reshape inputs for LSTM [samples, timesteps, features]
+    #X_train = X_train.reshape(X_train.shape[0], -1, timesteps)
     X_train = X_train.reshape(-1, timesteps, 1)
     print("Training data shape:", X_train.shape)
 
@@ -98,10 +72,10 @@ def main(args):
     model.summary()
 
     # Fit the model to the data
-    nb_epochs = 300
-    batch_size = 2048
-    early_stop = EarlyStopping(monitor='val_loss', patience=10, verbose=0, mode='min')
-    mcp_save = ModelCheckpoint(f'{outdir}/best_model_H1.hdf5', save_best_only=True, monitor='val_loss', mode='min')
+    nb_epochs = 150
+    batch_size = 128
+    early_stop = EarlyStopping(monitor='val_loss', patience=5, verbose=0, mode='min')
+    mcp_save = ModelCheckpoint(f'{outdir}/best_model_{detector}.hdf5', save_best_only=False, monitor='val_loss', mode='min')
     history = model.fit(X_train, X_train, epochs=nb_epochs, batch_size=batch_size,
                         validation_split=0.2, callbacks=[early_stop, mcp_save]).history
     model.save(f'{outdir}/last_model.hdf5')
@@ -126,7 +100,7 @@ if __name__ == "__main__":
     # Additional arguments
     parser.add_argument("--freq", help="Sampling frequency of detector in KHz",
                         action='store', dest='freq', default=2)
-    parser.add_argument("--filtered", help="Apply LIGO's bandpass and whitening filters",
+    parser.add_argument("--filtered", help="Apply LIGO's bandpass and whitening filters. NOTE: should be applied in preprocessing",
                         action='store', dest='filtered', default=0)
     parser.add_argument("--timesteps", help="Number of timesteps passed to model",
                         action='store', dest='timesteps', default=100)

@@ -27,7 +27,7 @@ def filters(array, sample_frequency):
 
 def TPR_FPR_arrays(noise_array, injection_array, model_outdir, steps, num_entries=400): 
     # load the autoencoder network model
-    model = load_model('%s/best_model.hdf5'%(model_outdir))
+    model = load_model('%s/best_model_%s.hdf5'%(model_outdir, args.detector))
     '''
     x = []
     for event in range(len(noise_array)): 
@@ -43,7 +43,9 @@ def TPR_FPR_arrays(noise_array, injection_array, model_outdir, steps, num_entrie
             x.append(injection_array[event][:-92])
     injection_array = np.array(x).reshape(-1, steps, 1)
     '''
-     
+    n_noise_events = np.shape(noise_array)[0]
+    n_injection_events = np.shape(injection_array)[0]
+    
     noise_array = noise_array.reshape(-1, steps, 1)
     injection_array = injection_array.reshape(-1, steps, 1)
     
@@ -52,7 +54,6 @@ def TPR_FPR_arrays(noise_array, injection_array, model_outdir, steps, num_entrie
     X_pred_noise = model.predict(noise_array)
     print('Finished evaluating model on train data')
     
-    n_noise_events = 10000
     # Determine thresholds for FPR quantiles
     loss_fn = MeanSquaredError(reduction='none')
     losses = loss_fn(noise_array, X_pred_noise).numpy()
@@ -67,7 +68,6 @@ def TPR_FPR_arrays(noise_array, injection_array, model_outdir, steps, num_entrie
     X_pred_injection = model.predict(injection_array)
     print('Finished evaluating model on test data')
     
-    n_injection_events = 10000
     losses = loss_fn(injection_array, X_pred_injection).numpy()
     averaged_losses = np.mean(losses, axis=1).reshape(n_injection_events, -1)
     
@@ -88,8 +88,13 @@ def TPR_FPR_arrays(noise_array, injection_array, model_outdir, steps, num_entrie
 
 def TPR_FPR_arrays_doubledetector(noise_array_L1, injection_array_L1, noise_array_H1, injection_array_H1, model_outdir, steps, num_entries=400): 
     # load the autoencoder network model
-    model = load_model('%s/best_model.hdf5'%(model_outdir))
+    model_L1 = load_model('%s/best_model_L1.hdf5'%(model_outdir))
+    model_H1 = load_model('%s/best_model_H1.hdf5'%(model_outdir))
      
+        
+    n_noise_events = np.shape(noise_array_L1)[0]
+    n_injection_events = np.shape(injection_array_L1)[0]
+    
     noise_array_L1 = noise_array_L1.reshape(-1, steps, 1)
     injection_array_L1 = injection_array_L1.reshape(-1, steps, 1)
     noise_array_H1 = noise_array_H1.reshape(-1, steps, 1)
@@ -97,11 +102,10 @@ def TPR_FPR_arrays_doubledetector(noise_array_L1, injection_array_L1, noise_arra
     
     ### Evaluating on training data to find threshold ### 
     print('Evaluating Model on train data. This make take a while...')
-    X_pred_noise_L1 = model.predict(noise_array_L1)
-    X_pred_noise_H1 = model.predict(noise_array_H1)
+    X_pred_noise_L1 = model_L1.predict(noise_array_L1)
+    X_pred_noise_H1 = model_H1.predict(noise_array_H1)
     print('Finished evaluating model on train data')
     
-    n_noise_events = 10000
     # Determine thresholds for FPR quantiles
     loss_fn = MeanSquaredError(reduction='none')
     losses_L1 = loss_fn(noise_array_L1, X_pred_noise_L1).numpy()
@@ -115,11 +119,10 @@ def TPR_FPR_arrays_doubledetector(noise_array_L1, injection_array_L1, noise_arra
     thresholds = [np.quantile(max_losses, 1.0-fpr) for fpr in FPRs]
     
     print('Evaluating Model on test data. This make take a while...')
-    X_pred_injection_L1 = model.predict(injection_array_L1)
-    X_pred_injection_H1 = model.predict(injection_array_H1)
+    X_pred_injection_L1 = model_L1.predict(injection_array_L1)
+    X_pred_injection_H1 = model_H1.predict(injection_array_H1)
     print('Finished evaluating model on test data')
-    
-    n_injection_events = 10000
+
     losses_L1 = loss_fn(injection_array_L1, X_pred_injection_L1).numpy()
     losses_H1 = loss_fn(injection_array_H1, X_pred_injection_H1).numpy()
     averaged_losses_L1 = np.mean(losses_L1, axis=1).reshape(n_injection_events, -1)
@@ -190,16 +193,17 @@ def main(args):
 
     print("Testing data shape:", X_test.shape)
     '''
-    X_test_L1 = load_L1['injection'][:10000, :16092]
-    X_train_L1 = load_L1['noise'][300000:310000, :16092]
-    X_test_H1 = load_H1['injection'][:10000, :16092]
-    X_train_H1 = load_H1['noise'][300000:310000, :16092]
+    X_test_L1 = load_L1['injection'][:1000, :16092]
+    X_train_L1 = load_L1['noise'][300000:301000, :16092]
+    X_test_H1 = load_H1['injection'][:1000, :16092]
+    X_train_H1 = load_H1['noise'][300000:301000, :16092]
     
     #directory_list = [outdir]
     #names = ['LSTM Autoencoder']
     #timesteps = [timesteps]
-    directory_list = ['BIGsimdata_L1_2KHz_unsupervised_filtered_DNN', 'BIGsimdata_L1_2KHz_unsupervised_filtered_ConvDNN']#, 'BIGsimdata_L1_2KHz_unsupervised_filtered_LSTM']
-    names = ['DNN Autoencoder', 'CNN-DNN Autoencoder']#, 'LSTM Autoencoder']
+    directory_list = ['BIGsimdata_L1_2KHz_unsupervised_filtered_DNN']#, 'BIGsimdata_L1_2KHz_unsupervised_filtered_ConvDNN', 'BIGsimdata_L1_2KHz_unsupervised_filtered_LSTM']
+    
+    names = ['DNN Autoencoder']#, 'CNN-DNN Autoencoder', 'LSTM Autoencoder']
     timesteps = [100, 108, 100]
     FPR_set = []
     TPR_set = []
@@ -207,11 +211,11 @@ def main(args):
     for name, directory, timestep in zip(names, directory_list, timesteps): 
         print('Determining performance for: %s'%(name))
         if timestep == 100: 
-            #TPR, FPR = TPR_FPR_arrays_doubledetector(X_train_L1[:, :16000], X_test_L1[:, :16000], X_train_H1[:, :16000], X_test_H1[:, :16000], directory, timestep)
-            TPR, FPR = TPR_FPR_arrays(X_train_H1[:, :16000], X_test_H1[:, :16000], directory, timestep)
+            TPR, FPR = TPR_FPR_arrays_doubledetector(X_train_L1[:, :16000], X_test_L1[:, :16000], X_train_H1[:, :16000], X_test_H1[:, :16000], directory, timestep)
+            #TPR, FPR = TPR_FPR_arrays(X_train_H1[:, :16000], X_test_H1[:, :16000], directory, timestep)
         else: 
-            #TPR, FPR = TPR_FPR_arrays_doubledetector(X_train_L1, X_test_L1, X_train_H1, X_test_H1, directory, timestep)
-            TPR, FPR = TPR_FPR_arrays(X_train_H1, X_test_H1, directory, timestep)
+            TPR, FPR = TPR_FPR_arrays_doubledetector(X_train_L1, X_test_L1, X_train_H1, X_test_H1, directory, timestep)
+            #TPR, FPR = TPR_FPR_arrays(X_train_H1, X_test_H1, directory, timestep)
         TPR_set.append(TPR)
         FPR_set.append(FPR)
         print('Done!')
@@ -229,7 +233,7 @@ def main(args):
     plt.xscale('log')
     plt.title('LIGO Unsupervised Autoencoder Anomaly Detection')
     plt.legend(loc="upper left")
-    plt.savefig('%s/ROC_curve_log_1.jpg'%(outdir))
+    plt.savefig('%s/ROC_curve_log_2_%s.jpg'%(outdir, detector))
 
     sys.exit()
     ### Enable if needed - these are additional plots to check if methods are working in unsupervised learning approach###
