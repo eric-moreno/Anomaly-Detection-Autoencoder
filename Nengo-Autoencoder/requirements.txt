@@ -31,7 +31,7 @@ nengo==3.0.0
 nengo-dl==3.2.0
 nengo-extras==0.4.0
 -e git+https://github.com/nengo/nengo-loihi.git@c8713ad1856fb1c453d2ea342f397c3075fb7ebe#egg=nengo_loihi
-numpy==1.16.4
+numpy==1.22.0
 oauthlib==3.1.0
 olefile==0.46
 opt-einsum==3.3.0

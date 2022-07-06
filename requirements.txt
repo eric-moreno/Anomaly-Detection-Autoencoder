@@ -1,4 +1,4 @@
-numpy==1.16.4
+numpy==1.22.0
 pandas==0.25.0
 setGPU==0.0.7
 scikit-garden==0.1.3
