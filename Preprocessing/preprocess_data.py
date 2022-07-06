@@ -28,55 +28,93 @@ def augmentation(X_train, timesteps):
 
 def main(args):
     outdir = args.outdir
-    detector = args.detector
+    detector = 'L1'
     freq = args.freq
     filtered = args.filtered
     #eventwidth = args.eventwidth
     filename = args.filename
     os.system('mkdir -p %s'%outdir)
     
-    # Load train 
-    load_1 = h5.File('../../dataset/default_simulated_big_1.hdf', 'r')
-    load_2 = h5.File('../../dataset/default_simulated_big_2.hdf', 'r')
-    load_3 = h5.File('../../dataset/default_simulated_big_3.hdf', 'r')
-    
-    datapoints = 40000
-    noise_samples_1 = load_1['noise_samples']['%s_strain'%(str(detector).lower())][:datapoints]
-    injection_samples_1 = load_1['injection_samples']['%s_strain'%(str(detector).lower())][:datapoints]
-    noise_samples_2 = load_2['noise_samples']['%s_strain'%(str(detector).lower())][:datapoints]
-    injection_samples_2 = load_2['injection_samples']['%s_strain'%(str(detector).lower())][:datapoints]
-    noise_samples_3 = load_3['noise_samples']['%s_strain'%(str(detector).lower())][:int(datapoints)]
-    injection_samples_3 = load_3['injection_samples']['%s_strain'%(str(detector).lower())][:int(datapoints)]
-    del load_1, load_2, load_3
-    data = np.concatenate((injection_samples_1, injection_samples_2, injection_samples_3, noise_samples_1, noise_samples_2 ,noise_samples_3))
-    truth = np.concatenate((np.ones(int(datapoints*3)), np.zeros(int(datapoints*3))))
-
-    del noise_samples_1, noise_samples_2 ,noise_samples_3, injection_samples_1, injection_samples_2, injection_samples_3
-    
-    # Definining frequency in Hz instead of KHz
-    if int(freq) == 2: 
-        freq = 2048
-    elif int(freq) == 4: 
-        freq = 4096
-    
-    # With LIGO simulated data, the sample isn't pre-filtered so need to filter again. Real data
-    # is not filtered yet. 
-    
-    if bool(int(filtered)):
-        print('Filtering data with whitening and bandpass')
-        print('Sample Frequency: %s Hz'%(freq))
-        #randomly distributes GW between (0.2, 0.8) seconds into the event
-        x = [filters(sample, freq)[index:index+2048] for sample, index in zip(data, np.random.randint(9625,10854, size=len(data)))]
-        print('Done!')
-    # Normalize the data
-    scaler = MinMaxScaler()
-    X_transformed = scaler.fit_transform(x)
-    scaler_filename = "%s/scaler_data_%s"%(outdir, detector)
-    joblib.dump(scaler, scaler_filename)
-    
     hf = h5.File('%s/%s.h5'%(outdir, filename), 'w')
-    hf.create_dataset('data', data=X_transformed)
-    hf.create_dataset('truth', data=truth)
+    
+    load_array = ['default_BNS_8sec_15seed_3detector.hdf', 'default_BNS_8sec_15seed_3detector.hdf', 'default_BNS_8sec_15seed_3detector.hdf']
+    counter = 0 
+    for dataset in load_array: 
+        
+        # Load train 
+        load = h5.File('../ggwd/output/'+dataset, 'r')
+        
+        if counter == 1: 
+            detector = 'H1'
+
+        print("Evaluating for detector: " + detector)
+        noise_samples = load['noise_samples']['%s_strain'%(str(detector).lower())][:]
+        injection_samples = load['injection_samples']['%s_strain'%(str(detector).lower())][:]
+        del load
+
+        # Definining frequency in Hz instead of KHz
+        if int(freq) == 2: 
+            freq = 2048
+        elif int(freq) == 4: 
+            freq = 4096
+
+        # With LIGO simulated data, the sample isn't pre-filtered so need to filter again. Real data
+        # is not filtered yet. 
+
+        if bool(int(filtered)):
+            print('Filtering data with whitening and bandpass')
+            print('Sample Frequency: %s Hz'%(freq))
+            #randomly distributes GW between (0.2, 0.8) seconds into the event
+            #x_noise = [filters(sample, freq)[index:index+int(2.5*2048)] for sample, index in zip(noise_samples, np.random.randint(int(3.5*2048),5*2048, size=len(noise_samples)))]
+            x_noise = [filters(sample, freq) for sample in noise_samples]
+            print('Done!')
+
+        if bool(int(filtered)):
+            print('Filtering data with whitening and bandpass')
+            print('Sample Frequency: %s Hz'%(freq))
+            #randomly distributes GW between (0.2, 0.8) seconds into the event
+            #x_injection = [filters(sample, freq)[index:index+int(2.5*2048)] for sample, index in zip(injection_samples, np.random.randint(int(3.5*2048),5*2048, size=len(injection_samples)))]
+            x_injection = [filters(sample, freq) for sample in injection_samples]
+            print('Done!')
+        
+        del noise_samples, injection_samples
+        
+        if counter == 0:
+            # Normalize the data
+            scaler_filename = "%s/scaler_data_BNS_L1"%(outdir)
+            scaler = joblib.load(scaler_filename) 
+            X_noise_transformed = scaler.transform(x_noise)
+            X_injection_transformed = scaler.transform(x_injection)
+            
+            
+            #scaler = MinMaxScaler()
+            #X_noise_transformed = scaler.fit_transform(x_noise)
+            #X_injection_transformed = scaler.transform(x_injection)
+            #scaler_filename = "%s/scaler_data_unsupervised_simulated_H1"%(outdir)
+            #joblib.dump(scaler, scaler_filename)
+        else: 
+            X_noise_transformed = scaler.transform(x_noise)
+            X_injection_transformed = scaler.transform(x_injection)
+  
+        #if dataset == load_array[0]:                 
+        if counter == 0: 
+            hf.create_dataset('noise_L1', data=X_noise_transformed, maxshape=(None,None))
+            hf.create_dataset('injection_L1', data=X_injection_transformed, maxshape=(None,None))
+            
+        elif counter == 1:              
+            hf.create_dataset('noise_H1', data=X_noise_transformed, maxshape=(None,None))
+            hf.create_dataset('injection_H1', data=X_injection_transformed, maxshape=(None,None))
+            
+        else: 
+            hf["noise"].resize((hf["noise"].shape[0] + X_noise_transformed.shape[0]), axis = 0)
+            hf["noise"][-X_noise_transformed.shape[0]:] = X_noise_transformed
+            hf["injection"].resize((hf["injection"].shape[0] + X_injection_transformed.shape[0]), axis = 0)
+            hf["injection"][-X_injection_transformed.shape[0]:] = X_injection_transformed
+            
+        del X_noise_transformed, X_injection_transformed, x_noise, x_injection
+        
+        counter += 1
+        
     hf.close()
     
 

@@ -6,7 +6,6 @@ import pandas as pd
 import numpy as np
 import setGPU
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.externals import joblib
 from sklearn.model_selection import train_test_split
 import seaborn as sns
 sns.set(color_codes=True)
@@ -34,8 +33,9 @@ def main(args):
     timesteps = int(args.timesteps)
     os.system('mkdir -p %s'%outdir)
     
-    load = h5.File('../../dataset/240k_1sec_L1_GWdistributed.h5', 'r')
-
+    load = h5.File(f'../../dataset/default_BBH_{detector}.h5', 'r')
+    load_alt = h5.File(f'../../dataset/default_BNS_{detector}.h5', 'r')
+    
     # Define frequency in Hz instead of KHz
     if int(freq) == 2:
         freq = 2048
@@ -44,34 +44,52 @@ def main(args):
     else:
         print(f'Given frequency {freq}kHz is not supported. Correct values are 2 or 4kHz.')
 
-    datapoints = 120000
+    datapoints = 75000
     gw = np.concatenate((np.zeros(datapoints), np.ones(datapoints)))
     noise = np.concatenate((np.ones(datapoints), np.zeros(datapoints)))
     targets = np.transpose(np.array([gw, noise]))
-
-    X = load['data'][:]
+    
+    #X = np.concatenate((load['injection'][:datapoints, :], load['noise'][:datapoints, :]))
+    X = np.concatenate((load['injection'][:datapoints, 11050-300:11450+300], load['noise'][:datapoints, 11050-300:11450+300]))
     # splitting the train / test data in ratio 80:20
     train_data, test_data, train_truth, test_truth = train_test_split(X, targets, test_size=0.2, random_state=42)
     class_names = np.array(['noise', 'GW'], dtype=str)
 
     print(train_data.shape)
     # Reshape inputs
-    train_data = train_data.reshape((train_data.shape[0], 1, -1))
+    train_data = train_data.reshape((train_data.shape[0], -1))
     print("Train data shape:", train_data.shape)
     #train_truth = train_truth.reshape((train_truth.shape[0], 1, -1))
     print("Train labels data shape:", train_truth.shape)
-    test_data = test_data.reshape((test_data.shape[0], 1, -1))
+    test_data = test_data.reshape((test_data.shape[0], -1))
     print("Test data shape:", test_data.shape)
     #test_truth = test_truth.reshape((test_truth.shape[0], 1, -1))
     print("Test labels data shape:", test_truth.shape)
     
-    # Evaluate model
-    model = load_model('%s/best_model.hdf5'%(outdir))
-    X_pred_test = model.predict(test_data)
+    del train_data, train_truth
     
-    directory_list = [outdir]
-    names = ['CNN Nengo Architecture']
-    predictions = [X_pred_test]
+    #X_alt = np.concatenate((load_alt['injection'][:datapoints, :], load_alt['noise'][:datapoints, :]))
+    X_alt = np.concatenate((load_alt['injection'][:datapoints, 11050-300:11450+300], load_alt['noise'][:datapoints, 11050-300:11450+300]))
+    # splitting the train / test data in ratio 80:20
+    train_data_alt, test_data_alt, train_truth_alt, test_truth_alt = train_test_split(X_alt, targets, test_size=0.2, random_state=42)
+    test_data_alt = test_data_alt.reshape((test_data_alt.shape[0], -1))
+    
+    del train_data_alt, train_truth_alt
+    
+    
+    # Evaluate model
+    model = load_model('%s/best_model_%s.hdf5'%(outdir, detector))
+    model_alt = load_model('%s/best_model_%s.hdf5'%('BNS_training_supervised_ConvDNN_fixedtime', detector))
+    
+    X_pred_test_native_native = model.predict(test_data)
+    X_pred_test_native_alt = model.predict(test_data_alt)
+    
+    X_pred_test_alt_native = model_alt.predict(test_data_alt)
+    X_pred_test_alt_alt = model_alt.predict(test_data)
+    
+    directory_list = [outdir, outdir, outdir, outdir]
+    names = ['BBH Train, BBH Data', 'BBH Train, BNS Data', 'BNS Train, BBH Data', 'BNS Train, BNS Data']
+    predictions = [X_pred_test_native_native, X_pred_test_native_alt, X_pred_test_alt_alt, X_pred_test_alt_native]
     
     # ROC Curve Plot
     plt.figure()
@@ -82,7 +100,7 @@ def main(args):
         print('Accuracy: %s'%(accuracy_score(np.argmax(test_truth, axis=-1), np.argmax(pred, axis=-1))))
         print('Done!')
     plt.plot([0, 1], [0, 1], lw=2, linestyle='--')
-    plt.xlim([1e-4, 1])
+    plt.xlim([1e-3, 1])
     plt.ylim([0.0, 1.05])
     plt.xlabel('False Positive Rate')
     plt.ylabel('True Positive Rate')
@@ -91,6 +109,7 @@ def main(args):
     plt.legend(loc="lower right")
     plt.savefig('%s/ROC_curve_log.jpg'%(outdir))
               
+    sys.exit()
     # SNR vs Efficiency plot
     plt.figure()
     bins = 30
