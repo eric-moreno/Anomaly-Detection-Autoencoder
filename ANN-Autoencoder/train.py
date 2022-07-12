@@ -12,6 +12,7 @@ from sklearn.preprocessing import MinMaxScaler
 #from gwpy.timeseries import TimeSeries
 from keras.callbacks import EarlyStopping, ModelCheckpoint, Callback
 from model import autoencoder_LSTM, autoencoder_LSTM_big, autoencoder_LSTM_deep, autoencoder_ConvLSTM, autoencoder_ConvDNN, autoencoder_DNN, autoencoder_Conv, autoencoder_Conv2, autoencoder_Conv_paper, autoencoder_GRU
+import tensorflow as tf
 
 sns.set(color_codes=True)
 
@@ -55,11 +56,11 @@ def main(args):
     else:
         return print(f'Given frequency {freq}kHz is not supported. Correct values are 2 or 4kHz.')
     
-    X_train = load['noise'][:1000, :16000]
+    X_train = load['noise'][:, :].astype(np.float32)
+    X_train = X_train[:, :-int(np.shape(X_train)[1]%timestep)]
     del load 
     # Data augmentation needed if not enough data
     # X_train = augmentation(X_train, timesteps)
-    
     
     # Reshape inputs for LSTM [samples, timesteps, features]
     #X_train = X_train.reshape(X_train.shape[0], -1, timesteps)
@@ -96,7 +97,7 @@ if __name__ == "__main__":
     # Required positional arguments
     parser.add_argument("outdir", help="Required output directory")
     parser.add_argument("detector", help="LIGO Detector")
-
+    
     # Additional arguments
     parser.add_argument("--freq", help="Sampling frequency of detector in KHz",
                         action='store', dest='freq', default=2)
