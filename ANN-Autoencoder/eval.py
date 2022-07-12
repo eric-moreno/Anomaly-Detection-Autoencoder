@@ -337,7 +337,7 @@ def main(args):
     directory_list = ['LSTM', 'GRU', 'CNN'] # will look inside these directories
     names_unsupervised = ['LSTM Autoencoder ', 'GRU Autoencoder', 'CNN Autoencoder'] # plot with these names
     timesteps = [100, 100, 1024] # use these timesteps for the corresponding above models
-    
+
     
     FPR_set = []
     TPR_set = []
