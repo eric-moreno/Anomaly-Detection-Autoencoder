@@ -38,7 +38,7 @@ opt-einsum==3.3.0
 packaging==20.4
 pandas==0.22.0
 progressbar2==3.51.4
-protobuf==3.12.2
+protobuf==3.18.3
 py-cpuinfo==7.0.0
 pyasn1==0.4.8
 pyasn1-modules==0.2.8
