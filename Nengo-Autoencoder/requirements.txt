@@ -66,6 +66,6 @@ threadpoolctl==2.1.0
 toml==0.10.1
 tornado==6.0.4
 urllib3==1.25.9
-Werkzeug==1.0.1
+Werkzeug==2.2.3
 wincertstore==0.2
 wrapt==1.12.1
